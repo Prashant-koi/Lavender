@@ -1,6 +1,6 @@
 use aya::Ebpf;
 use aya::programs::TracePoint;
-use aya::maps::RingBuf;
+use aya::maps::{MapData, RingBuf};
 use common::ExecEvent;
 use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
@@ -44,31 +44,60 @@ async fn main() {
     // This contains the kernel-side program and maps.
     let mut bpf = Ebpf::load_file("../ebpf/execve.bpf.o").unwrap();
 
+    //we will declare ring_fd and exit_fd here out of the scope so that it is also accessible
+    // to the rest of the function
+    let mut ring_fd: AsyncFd<RingBuf<MapData>>;
+    let mut exit_fd: AsyncFd<RingBuf<MapData>>;
+
+    // we are separate scoping attaching for handle_execve and handle_exit
+    // because if we don't we will run into an bpf borrow issue with those
+    // where they try to borrow bpf one after another
+    {
     // Grab the tracepoint program by name and cast it to TracePoint
     // THis way we can load and attach it
-    let program: &mut TracePoint = bpf
+    let execve_program: &mut TracePoint = bpf
         .program_mut("handle_execve")
         .unwrap()
         .try_into()
         .unwrap();
-
+    
     // We will load program into the kernel and attach it to execve tracepoint.
-    program.load().unwrap();
-    program.attach("syscalls", "sys_enter_execve").unwrap();
+    execve_program.load().unwrap();
+    execve_program.attach("syscalls", "sys_enter_execve").unwrap();
 
     // Get a handle to the ring buffer map used to send events
     // from eBPF (from the kernel space) to this user-space process
-    let ring = RingBuf::try_from(bpf.map_mut("events").unwrap()).unwrap();
-
+    let execve_ring = RingBuf::try_from(bpf.take_map("exec_events").unwrap()).unwrap();
+    
     // Wrap ring buffer in AsyncFd so tokio can await readiness
     // without blocking the async runtime.
-    let mut ring_fd = AsyncFd::new(ring).unwrap();
+    ring_fd = AsyncFd::new(execve_ring).unwrap();   
+    }
+
+    // we will do handle_exit the same way as handle_execve
+    {
+    let exit_program: &mut TracePoint = bpf
+        .program_mut("handle_exit")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    exit_program.load().unwrap();
+    exit_program.attach("sched", "sched_process_exit").unwrap();
+
+    
+    let exit_ring = RingBuf::try_from(bpf.take_map("exit_events").unwrap()).unwrap();
+
+    exit_fd = AsyncFd::new(exit_ring).unwrap();
+    }
+
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
 
     println!("Lavender is watching. Ctrl+C to stop");
 
     loop {
         tokio::select! {
+            //arm 1
             // We will wait until the ring buffer has data.
             Ok(mut guard) = ring_fd.readable_mut() => {
                 let rb = guard.get_inner_mut();
@@ -111,6 +140,29 @@ async fn main() {
                 guard.clear_ready();
             }
 
+            // arm2
+            // This arm will manage exit events data
+            Ok(mut guard) = exit_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    // we will read it as u32 directly
+                    let pid = unsafe { *(item.as_ptr() as *const u32)};
+                    
+                    //remove from tree
+                    if process_tree.remove(&pid).is_some() {
+                        // uncomment while testing, NOTE TO SELF
+                        // println!("[exit     {:>6}] removed from tree", pid)
+                    }
+
+                    // temporary debug line 
+                    // println!("[tree size: {}]", process_tree.len());
+                };
+
+
+                guard.clear_ready();
+            }
+            // arm 3
             // Shutdowen with Ctrl + C. Don't remove for now
             _ = tokio::signal::ctrl_c() => {
                 println!("\nShutting down...");
