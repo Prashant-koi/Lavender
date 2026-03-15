@@ -1,6 +1,6 @@
 use aya::Ebpf;
 use aya::programs::TracePoint;
-use aya::maps::{MapData, RingBuf};
+use aya::maps::RingBuf;
 use common::ExecEvent;
 use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
@@ -44,15 +44,6 @@ async fn main() {
     // This contains the kernel-side program and maps.
     let mut bpf = Ebpf::load_file("../ebpf/execve.bpf.o").unwrap();
 
-    //we will declare ring_fd and exit_fd here out of the scope so that it is also accessible
-    // to the rest of the function
-    let mut ring_fd: AsyncFd<RingBuf<MapData>>;
-    let mut exit_fd: AsyncFd<RingBuf<MapData>>;
-
-    // we are separate scoping attaching for handle_execve and handle_exit
-    // because if we don't we will run into an bpf borrow issue with those
-    // where they try to borrow bpf one after another
-    {
     // Grab the tracepoint program by name and cast it to TracePoint
     // THis way we can load and attach it
     let execve_program: &mut TracePoint = bpf
@@ -65,17 +56,7 @@ async fn main() {
     execve_program.load().unwrap();
     execve_program.attach("syscalls", "sys_enter_execve").unwrap();
 
-    // Get a handle to the ring buffer map used to send events
-    // from eBPF (from the kernel space) to this user-space process
-    let execve_ring = RingBuf::try_from(bpf.take_map("exec_events").unwrap()).unwrap();
-    
-    // Wrap ring buffer in AsyncFd so tokio can await readiness
-    // without blocking the async runtime.
-    ring_fd = AsyncFd::new(execve_ring).unwrap();   
-    }
-
-    // we will do handle_exit the same way as handle_execve
-    {
+     // we will do handle_exit the same way as handle_execve
     let exit_program: &mut TracePoint = bpf
         .program_mut("handle_exit")
         .unwrap()
@@ -85,11 +66,16 @@ async fn main() {
     exit_program.load().unwrap();
     exit_program.attach("sched", "sched_process_exit").unwrap();
 
+
+    // Get a handle to the ring buffer map used to send events
+    // from eBPF (from the kernel space) to this user-space process
+    let execve_ring = RingBuf::try_from(bpf.take_map("events").unwrap()).unwrap();
+    // Wrap ring buffer in AsyncFd so tokio can await readiness
+    // without blocking the async runtime.
+    let mut ring_fd = AsyncFd::new(execve_ring).unwrap();
     
     let exit_ring = RingBuf::try_from(bpf.take_map("exit_events").unwrap()).unwrap();
-
-    exit_fd = AsyncFd::new(exit_ring).unwrap();
-    }
+    let mut exit_fd = AsyncFd::new(exit_ring).unwrap();
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
 
