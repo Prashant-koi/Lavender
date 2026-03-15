@@ -48,10 +48,18 @@ On success, you should see:
 Lavender is watching. Ctrl+C to stop
 ```
 
+
 ## Why `exec format error` happens? (What I learned)
 `execve.bpf.o` is an ELF object for the eBPF virtual machine, not a native executable. It cannot be run directly with `./execve.bpf.o`.
 
 Use it by loading it through a userspace loader (for example, a Rust/C program using libbpf) or `bpftool` attach/load commands.
+
+## Event Streams And Map Names
+The userspace loader reads from two ring buffer maps:
+- `exec_events`: process execve events (`pid`, `ppid`, `comm`, `filename`)
+- `exit_events`: process exit events (`pid` only)
+
+Current eBPF map names are defined in `ebpf/execve.bpf.c` as `exec_events` and `exit_events`.
 
 ## Helpful commands
 ```bash
