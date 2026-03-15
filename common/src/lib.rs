@@ -5,3 +5,8 @@ pub struct ExecEvent {
     pub comm: [u8; 16],    // process name, the kernel limits this to 16 bytes (TASK_COMM_LEN)
     pub filename: [u8; 256],
 }
+
+#[repr(C)]
+pub struct ExitEvent {
+    pub pid: u32,
+}

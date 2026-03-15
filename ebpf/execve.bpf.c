@@ -9,7 +9,8 @@
  * Event sent to user space through ring buffer.
  * We need to keep struct in sync with the Rust-side event layout.
  */
-struct exec_event {
+struct exec_event 
+{
     u32 pid;
     u32 ppid;
     u8  comm[16];    // process name, kernel limits this to 16 bytes (TASK_COMM_LEN)
@@ -17,13 +18,34 @@ struct exec_event {
 };
 
 /*
+    Contains the pid of processes that died
+*/
+struct exit_event
+{
+    u32 pid;
+};
+
+
+/*
  * Ring buffer map used to stream events to user space.
  * max_entries is total buffer capacity in bytes.
  */
-struct {
+struct 
+{
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 256 * 1024);
-} events SEC(".maps");
+} exec_events SEC(".maps");
+
+/*
+    Ring buffer map used to stream events to user space
+    This one contains the processes that died
+*/
+struct 
+{
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 256 * 1024);
+} exit_events SEC(".maps");
+
 
 /*
  * Tracepoint program: runs every time sys_enter_execve fires.
@@ -32,7 +54,7 @@ struct {
 SEC("tp/syscalls/sys_enter_execve")
 int handle_execve(struct trace_event_raw_sys_enter *ctx)
 {
-    struct exec_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct exec_event *e = bpf_ringbuf_reserve(&exec_events, sizeof(*e), 0);
     if (!e) return 0;  // buffer full, drop this event
 
     // the uppper 32 bits is pid and the lower 32 is tgid(thread group ID) that the bpf_get_current_task() returns
@@ -56,6 +78,23 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
 
     return 0;
 }
+
+SEC("tp/sched/sched_process_exit")
+int handle_exit(struct trace_event_raw_sched_process_template *ctx)
+{
+    // reserve space in the exit ring buffer
+    u32 *pid_slot = bpf_ringbuf_reserve(&exit_events, sizeof(u32), 0);
+    if (!pid_slot) return 0;
+
+    // upper 32 is the pid bottom is the tgid reference comments in handle_execve function
+    u64 id = bpf_get_current_pid_tgid();
+    *pid_slot = id >> 32;
+
+    bpf_ringbuf_submit(pid_slot, 0);
+    
+    return 0;
+}
+
 
 // we need this or else the verification part might fail
 char LICENSE[] SEC("license") = "GPL";
