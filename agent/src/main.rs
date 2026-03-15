@@ -2,7 +2,41 @@ use aya::Ebpf;
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::ExecEvent;
+use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
+
+#[derive(Clone, Debug)]
+struct ProcessNode {
+    pid: u32,
+    ppid: u32,
+    comm: String,
+    filename: String,
+}
+
+fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
+    let mut chain = vec![];
+    let mut current_pid = pid;
+
+    //we will walk upward through parents and go max of 8 levels
+    // max limit to stop inf loops in case the data is weird
+    for _ in 0..8 {
+        match tree.get(&current_pid) {
+            Some(node) => {
+                chain.push(node.comm.clone());
+                if node.ppid == 0 || node.ppid == current_pid {
+                    //either we reached init or a cycle
+                    break;
+                }
+                current_pid = node.ppid;
+            }
+            None => break,
+        }
+    }
+
+    // reverse the chian since we built it button up
+    chain.reverse();
+    chain.join("=>")
+}
 
 #[tokio::main]
 async fn main() {
@@ -29,6 +63,7 @@ async fn main() {
     // Wrap ring buffer in AsyncFd so tokio can await readiness
     // without blocking the async runtime.
     let mut ring_fd = AsyncFd::new(ring).unwrap();
+    let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -48,13 +83,28 @@ async fn main() {
                     // Convert to UTF-8 strings and strip trailing null bytes.
                     let comm = std::str::from_utf8(&event.comm)
                         .unwrap_or("?")
-                        .trim_end_matches('\0');
+                        .trim_end_matches('\0')
+                        .to_string();
 
                     let filename = std::str::from_utf8(&event.filename)
                         .unwrap_or("?")
-                        .trim_end_matches('\0');
+                        .trim_end_matches('\0')
+                        .to_string();
 
-                    println!("[pid {}] {} executed: {}", event.pid, comm, filename);
+                    // we will keep latest process metadata so we can reconstruct lineage
+                    process_tree.insert(
+                        event.pid,
+                        ProcessNode {
+                            pid: event.pid,
+                            ppid: event.ppid,
+                            comm: comm.to_string(),
+                            filename: filename.to_string(),
+                        },
+                    );
+
+                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
+
+                    println!("[pid {:>6}] {} | {}", event.pid, ancestry, filename);
                 }
 
                 // Tell AsyncFd we handled this readiness notification.
