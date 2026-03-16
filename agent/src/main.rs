@@ -71,7 +71,7 @@ async fn main() {
 
     // Get a handle to the ring buffer map used to send events
     // from eBPF (from the kernel space) to this user-space process
-    let execve_ring = RingBuf::try_from(bpf.take_map("events").unwrap()).unwrap();
+    let execve_ring = RingBuf::try_from(bpf.take_map("exec_events").unwrap()).unwrap();
     // Wrap ring buffer in AsyncFd so tokio can await readiness
     // without blocking the async runtime.
     let mut ring_fd = AsyncFd::new(execve_ring).unwrap();
@@ -122,6 +122,20 @@ async fn main() {
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
 
                     println!("[pid {:>6}] {} | {}", event.pid, ancestry, filename);
+
+                    //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
+                    if let Some(alert) = detection::check_suspicious_shell_spawn(
+                        &comm,
+                        &filename,
+                        event.pid,
+                        &ancestry,
+                    ) {
+                        // I will print it in red so that the Alert stands out
+                        println!(
+                            "\x1b[31m[ALERT] {} | pid: {} | {} | chain: {}\x1b[0m",
+                            alert.rule, alert.pid, alert.detail, alert.ancestry
+                        );
+                    }
                 }
 
                 // Tell AsyncFd we handled this readiness notification.
