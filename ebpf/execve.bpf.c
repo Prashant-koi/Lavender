@@ -25,6 +25,15 @@ struct exit_event
     u32 pid;
 };
 
+/*
+ contains info on the event that are opened by a process
+*/
+struct open_event
+{
+    u32 pid;
+    u8 comm[16];
+    u8 filename[256]; // the file being opened
+};
 
 /*
  * Ring buffer map used to stream events to user space.
@@ -45,6 +54,15 @@ struct
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 256 * 1024);
 } exit_events SEC(".maps");
+
+/*
+    This ring buffer contains the openevents one
+*/
+struct
+{
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 256 * 1024);
+} open_events SEC(".maps");
 
 
 /*
@@ -92,6 +110,34 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 
     bpf_ringbuf_submit(pid_slot, 0);
     
+    return 0;
+}
+
+/*
+    Tracepoint for open events
+*/
+SEC("tp/syscalls/sys_enter_openat")
+int handle_open(struct trace_event_raw_sys_enter *ctx)
+{   
+    //reserve space
+    struct open_event *o = bpf_ringbuf_reserve(&open_events, sizeof(*o), 0);
+    if (!o) return 0; 
+
+    // the uppper 32 bits is pid and the lower 32 is tgid(thread group ID) that the bpf_get_current_task() returns
+    u64 id = bpf_get_current_pid_tgid();
+    o->pid = id >> 32;
+
+    // command name (comm)
+    bpf_get_current_comm(&o->comm, sizeof(o->comm));
+
+    // args[0] for execve is const char *filename in user memory.
+    const char *filename_ptr = (const char *)ctx->args[1];
+
+    // we will copy the user space string into fixed buffer
+    bpf_probe_read_user_str(o->filename, sizeof(o->filename), filename_ptr);
+
+    bpf_ringbuf_submit(o, 0); // submit to user space, the event
+
     return 0;
 }
 

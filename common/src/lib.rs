@@ -10,3 +10,10 @@ pub struct ExecEvent {
 pub struct ExitEvent {
     pub pid: u32,
 }
+
+#[repr(C)]
+pub struct OpenEvent {
+    pub pid: u32,
+    pub comm: [u8; 16],
+    pub filename: [u8; 256],
+}
