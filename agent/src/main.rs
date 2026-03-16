@@ -1,5 +1,6 @@
 pub mod detection;
 pub mod output;
+pub mod config;
 
 use aya::Ebpf;
 use aya::programs::TracePoint;
@@ -43,6 +44,9 @@ fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
 
 #[tokio::main]
 async fn main() {
+    // we will load the config first
+    let config = config::Config::load("../lavender.toml");
+
     // We will Load the compiled eBPF object file.
     // This contains the kernel-side program and maps.
     let mut bpf = Ebpf::load_file("../ebpf/execve.bpf.o").unwrap();
@@ -124,12 +128,18 @@ async fn main() {
 
                     output::print_exec(event.pid, event.ppid, &comm, &filename, &ancestry);
 
+                    //we will skip the ignored processes(those mentioned in the lavender.toml)
+                    if config.filters.ignored_comms.iter().any(|s| comm.contains(s.as_str())) {
+                        continue;
+                    }
+
                     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
                     if let Some(alert) = detection::check_suspicious_shell_spawn(
                         &comm,
                         &filename,
                         event.pid,
                         &ancestry,
+                        &config.filters.safe_shell_launchers,
                     ) {
                         // I will print it in red so that the Alert stands out
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);

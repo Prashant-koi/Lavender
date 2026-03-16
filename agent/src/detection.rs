@@ -1,14 +1,5 @@
 // For detection rules
 
-// processes that are ALLOWED to spawn shells 
-const SAFE_SHELL_LAUNCHERS: &[&str] = &[
-    "bash", "sh", "zsh", "fish",        // shells spawning subshells
-    "tmux", "tmux: server",              // terminal multiplexers  
-    "alacritty", "kitty", "gnome-term",  // terminal emulators
-    "sshd",                              // remote login
-    "sudo", "su",                        // privilege escalation
-    "login",                             // login process
-];
 
 //what counts as a shell being spawned
 const SHELLS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
@@ -29,6 +20,7 @@ pub fn check_suspicious_shell_spawn(
     target_filename: &str,
     event_pid: u32,
     ancestry: &str,
+    safe_launchers: &[String],
 ) -> Option<Alert> {
     let target_base = basename(target_filename);
 
@@ -39,7 +31,7 @@ pub fn check_suspicious_shell_spawn(
     }
 
     //allow known normal launchers
-    let laucher_is_safe = SAFE_SHELL_LAUNCHERS.iter().any(|s| launcher_comm.contains(s));
+    let laucher_is_safe = safe_launchers.iter().any(|s| launcher_comm.contains(s));
     if laucher_is_safe {
         return None;
     }
