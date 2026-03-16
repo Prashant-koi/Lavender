@@ -48,6 +48,27 @@ On success, you should see:
 Lavender is watching. Ctrl+C to stop
 ```
 
+## Configuration (`lavender.toml`)
+Lavender uses a TOML config file at the repository root:
+
+```text
+lavender.toml
+```
+
+Current keys:
+- `filters.safe_shell_launchers`: process names allowed to launch shells without alerting
+- `filters.ignored_comms`: process names to skip during detection
+
+Example:
+
+```toml
+[filters]
+safe_shell_launchers = ["bash", "sh", "zsh", "fish", "code"]
+ignored_comms = ["cpuUsage.sh"]
+```
+
+Note: the agent currently loads `../lavender.toml`, so run it from the `agent` directory to use this config path reliably.
+
 ## Save Output To JSON
 From the `agent` directory, run the compiled binary directly so redirection applies cleanly:
 
