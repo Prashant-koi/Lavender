@@ -1,4 +1,5 @@
 pub mod detection;
+pub mod output;
 
 use aya::Ebpf;
 use aya::programs::TracePoint;
@@ -121,7 +122,7 @@ async fn main() {
 
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
 
-                    println!("[pid {:>6}] {} | {}", event.pid, ancestry, filename);
+                    output::print_exec(event.pid, event.ppid, &comm, &filename, &ancestry);
 
                     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
                     if let Some(alert) = detection::check_suspicious_shell_spawn(
@@ -131,10 +132,7 @@ async fn main() {
                         &ancestry,
                     ) {
                         // I will print it in red so that the Alert stands out
-                        println!(
-                            "\x1b[31m[ALERT] {} | pid: {} | {} | chain: {}\x1b[0m",
-                            alert.rule, alert.pid, alert.detail, alert.ancestry
-                        );
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
                     }
                 }
 
