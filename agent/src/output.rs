@@ -1,4 +1,7 @@
+use std::str;
+
 use serde::Serialize;
+use common::ConnEvent;
 
 //every event will get a unix timestamp
 fn now_secs() -> u64 {
@@ -60,4 +63,48 @@ pub fn print_alert(pid: u32, rule: &str, detail: &str, ancestry: &str) {
     // use this command from root of repo to get all alerts in a json file
     // sudo ./agent/target/debug/lavender-loader 1>/dev/null 2>alerts.json
     eprintln!("\x1b[31m{}\x1b[0m", serde_json::to_string(&event).unwrap());
+}
+
+//formatting of ip from the 4/16 byts of IPv4/IPv6
+fn format_ip(event: &ConnEvent) -> String {
+    if event.af == 2 {
+        //IPV4, which is first 4 bytes
+        format!("{}.{}.{}.{}",
+            event.daddr[0],
+            event.daddr[1],
+            event.daddr[2],
+            event.daddr[3],
+        )
+    } else {
+        //IPv6, all 16 bytes as hex pairs
+        let b = &event.daddr;
+        format!("{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:\
+                 {:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}",
+            b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7],
+            b[8],b[9],b[10],b[11],b[12],b[13],b[14],b[15]
+        ) // props to Claude for writing this!
+    }
+}
+
+#[derive(Serialize)]
+pub struct ConnOutput<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub pid: u32,
+    pub comm: &'a str,
+    pub dest_ip: String,
+    pub dest_port: u16,
+    pub timestamp: u64,
+}
+
+pub fn print_conn(event: &ConnEvent, comm: &str) {
+    let out = ConnOutput {
+        kind: "conn",
+        pid: event.pid,
+        comm,
+        dest_ip: format_ip(event),
+        dest_port: event.dport,
+        timestamp: now_secs(),
+    };
+    println!("{}", serde_json::to_string(&out).unwrap());
 }

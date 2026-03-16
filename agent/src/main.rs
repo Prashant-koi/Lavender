@@ -5,7 +5,7 @@ pub mod config;
 use aya::Ebpf;
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
-use common::{ExecEvent, OpenEvent};
+use common::{ExecEvent, OpenEvent, ConnEvent};
 use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
 
@@ -82,6 +82,16 @@ async fn main() {
     open_program.load().unwrap();
     open_program.attach("syscalls", "sys_enter_openat").unwrap();
 
+    // the network connection one
+    let conn_program: &mut TracePoint = bpf
+        .program_mut("handle_connect")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    conn_program.load().unwrap();
+    conn_program.attach("syscalls", "sys_enter_connect").unwrap();
+
     // Get a handle to the ring buffer map used to send events
     // from eBPF (from the kernel space) to this user-space process
     let execve_ring = RingBuf::try_from(bpf.take_map("exec_events").unwrap()).unwrap();
@@ -92,8 +102,11 @@ async fn main() {
     let exit_ring = RingBuf::try_from(bpf.take_map("exit_events").unwrap()).unwrap();
     let mut exit_fd = AsyncFd::new(exit_ring).unwrap();
 
-    let open_ring = RingBuf::try_from(bpf.map_mut("open_events").unwrap()).unwrap();
+    let open_ring = RingBuf::try_from(bpf.take_map("open_events").unwrap()).unwrap();
     let mut open_fd = AsyncFd::new(open_ring).unwrap();
+
+    let conn_ring = RingBuf::try_from(bpf.take_map("conn_events").unwrap()).unwrap();
+    let mut conn_fd = AsyncFd::new(conn_ring).unwrap();
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
 
@@ -220,7 +233,40 @@ async fn main() {
                 guard.clear_ready();
             }
 
-            // arm 4
+            //arm 4
+            // connection events
+            Ok(mut guard) = conn_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe {
+                        &*(item.as_ptr() as *const ConnEvent)
+                    };
+
+                    let comm = std::str::from_utf8(&event.comm)
+                        .unwrap_or("?")
+                        .trim_end_matches('\0')
+                        .to_string();
+
+                    //we will skip port 0 as they are internal socket operations
+                    if event.dport == 0 {
+                        continue;
+                    }
+
+                    //if localhost also skip
+                    if event.af == 2 && event.daddr[0] == 27 {
+                        continue;
+                    }
+
+                    output::print_conn(event, &comm);
+                }
+
+                guard.clear_ready();
+            }
+
+
+
+            // arm 5
             // Shutdowen with Ctrl + C. Don't remove for now
             _ = tokio::signal::ctrl_c() => {
                 println!("\nShutting down...");
