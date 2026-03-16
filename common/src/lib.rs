@@ -17,3 +17,12 @@ pub struct OpenEvent {
     pub comm: [u8; 16],
     pub filename: [u8; 256],
 }
+
+#[repr(C)]
+pub struct ConnEvent {
+    pub pid: u32,
+    pub comm: [u8; 16], // command name
+    pub daddr: [u8; 16], // the destination ip, size enough for IPv6, IPv4 uses the first 4 bytes
+    pub dport: u16, // the destination port
+    pub af: u16, // the address family (IPv4 or IPv6 might be other too)
+}

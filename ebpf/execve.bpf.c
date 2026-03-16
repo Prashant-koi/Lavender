@@ -36,6 +36,18 @@ struct open_event
 };
 
 /*
+    contains info about whever a process opens a network connection
+*/
+struct conn_event 
+{
+    u32 pid;
+    u8 comm[16];
+    u8 daddr[16]; // the destiantion ip is beig enough for IPv6, IPv4 uses the first 4 bytes
+    u16 dport; // the destination port
+    u16 af; // the address family (Ipv4 or IPv6) so rust agent knows hwo to interpret the IP
+};
+
+/*
  * Ring buffer map used to stream events to user space.
  * max_entries is total buffer capacity in bytes.
  */
@@ -64,6 +76,15 @@ struct
     __uint(max_entries, 256 * 1024);
 } open_events SEC(".maps");
 
+
+/*
+    ring buffer about conn_events
+*/
+struct
+{
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 256 * 1042);
+} conn_events SEC(".maps");
 
 /*
  * Tracepoint program: runs every time sys_enter_execve fires.
@@ -138,6 +159,58 @@ int handle_open(struct trace_event_raw_sys_enter *ctx)
 
     bpf_ringbuf_submit(o, 0); // submit to user space, the event
 
+    return 0;
+}
+
+/*
+    Tracepoint for new netwrk connections
+*/
+SEC("tp/syscalls/sys_enter_connect")
+int handle_connect(struct trace_event_raw_sys_enter *ctx)
+{
+    struct conn_event *e = bpf_ringbuf_reserve(&conn_events, sizeof(*e), 0);
+    if (!e) return 0;
+
+    //upper 32 bits is pid
+    u64 id = bpf_get_current_pid_tgid();
+    e->pid = id >> 32;
+
+    //command name (comm)
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+
+    struct sockaddr *addr = (struct sockaddr *)ctx->args[1];
+
+    // address familt read first, first 2 bytes of any sockaddr
+    u16 af = 0;
+    bpf_probe_read_user(&af, sizeof(af), &addr->sa_family);
+    e->af = af;
+
+    if (af==2) // AF_INET - IPv4
+    {
+        struct sockaddr_in sa = {};
+        bpf_probe_read_user(&sa, sizeof(sa), addr);
+
+        // since sin_port is big-endian we swap bytes to get redable port number
+        e->dport = __builtin_bswap16(sa.sin_port);
+
+        //copy 4 bytes of IPv4 address into first 4 bytes of daddr
+        bpf_probe_read_user(&e->daddr, 4, &sa.sin_addr);
+    } else if (af == 10) // AF-INET6 -IPv6
+    {
+        struct sockaddr_in6 sa = {};
+        bpf_probe_read_user(&sa, sizeof(sa), addr);
+
+        e->dport = __builtin_bswap16(sa.sin6_port);
+        bpf_probe_read_user(&e->daddr, 16, &sa.sin6_addr);
+    } else 
+    {
+        // mybe unix socker or something else 
+        // we will discard the reserved slot instead of submitting garbage
+        bpf_ringbuf_discard(e, 0);
+        return 0;
+    }
+
+    bpf_ringbuf_submit(e, 0);
     return 0;
 }
 
