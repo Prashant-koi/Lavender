@@ -48,6 +48,34 @@ On success, you should see:
 Lavender is watching. Ctrl+C to stop
 ```
 
+## Save Output To JSON
+From the `agent` directory, run the compiled binary directly so redirection applies cleanly:
+
+```bash
+cd agent
+cargo build
+```
+
+Capture all exec events to `events.json` and all alerts to `alerts.json`:
+
+```bash
+sudo ./target/debug/lavender-loader > events.json 2> alerts.json
+```
+
+Capture only alerts to `alerts.json` (discard normal exec stream):
+
+```bash
+sudo ./target/debug/lavender-loader 1>/dev/null 2>alerts.json
+```
+
+Capture only alerts and also see them live in terminal:
+
+```bash
+sudo ./target/debug/lavender-loader 1>/dev/null 2> >(tee alerts.json >&2)
+```
+
+Note: `./lavender-loader` may fail with "command not found" unless you copied the binary to the current directory. The default Cargo path is `./target/debug/lavender-loader`.
+
 
 ## Why `exec format error` happens? (What I learned)
 `execve.bpf.o` is an ELF object for the eBPF virtual machine, not a native executable. It cannot be run directly with `./execve.bpf.o`.
