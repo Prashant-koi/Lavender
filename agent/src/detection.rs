@@ -1,5 +1,28 @@
 // For detection rules
 
+// when read by unexpected processes these might be suspicious
+const SENSITIVE_FILES: &[&str] = &[
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/etc/sudoers.d",
+    "/.ssh/id_rsa",
+    "/.ssh/id_ed25519",
+    "/.ssh/authorized_keys",
+    "/.bash_history",
+    "/.zsh_history",
+    "/root/.ssh",
+];
+
+const SAFE_FILE_READERS: &[&str] = &[
+    "sshd",        // reads authorized_keys
+    "sudo",        // reads sudoers
+    "passwd",      // reads shadow
+    "shadow",      // reads shadow
+    "pam",         // reads shadow via pam modules
+    "bash",        // reads its own history
+    "zsh",         // reads its own history
+    "sh",
+];
 
 //what counts as a shell being spawned
 const SHELLS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
@@ -43,5 +66,32 @@ pub fn check_suspicious_shell_spawn(
         rule: "T1059 [Unexpected shell spawn]", 
         detail: format!("'{}' executed shell target ({})", launcher_comm, target_base), 
         ancestry: ancestry.to_string() 
+    })
+}
+
+pub fn check_sensitive_file_read (
+    comm: &str,
+    filename: &str,
+    event_pid: u32,
+    ancestry: &str,
+    safe_readers: &[String],
+) -> Option<Alert> {
+    // check if it is sensitive file
+    // i will use contains() instead of == because path mighht be absolute
+    let is_sensitve = SENSITIVE_FILES.iter().any(|s| filename.contains(s));
+    if !is_sensitve {
+        return  None;
+    }
+
+    let is_safe = SAFE_FILE_READERS.iter().any(|s| comm.contains(s)) || safe_readers.iter().any(|s| comm.contains(s.as_str()));
+    if is_safe {
+        return None;
+    }
+
+    Some(Alert { 
+        pid: event_pid , 
+        rule: "T1003 [Sensitive file read]",
+        detail: format!("'{}' opened sensitive file: {}", comm, filename), 
+        ancestry: ancestry.to_string(),
     })
 }

@@ -5,7 +5,7 @@ pub mod config;
 use aya::Ebpf;
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
-use common::ExecEvent;
+use common::{ExecEvent, OpenEvent};
 use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
 
@@ -73,6 +73,14 @@ async fn main() {
     exit_program.load().unwrap();
     exit_program.attach("sched", "sched_process_exit").unwrap();
 
+    let open_program: &mut TracePoint = bpf
+        .program_mut("handle_open")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    open_program.load().unwrap();
+    open_program.attach("syscalls", "sys_enter_openat").unwrap();
 
     // Get a handle to the ring buffer map used to send events
     // from eBPF (from the kernel space) to this user-space process
@@ -83,6 +91,9 @@ async fn main() {
     
     let exit_ring = RingBuf::try_from(bpf.take_map("exit_events").unwrap()).unwrap();
     let mut exit_fd = AsyncFd::new(exit_ring).unwrap();
+
+    let open_ring = RingBuf::try_from(bpf.map_mut("open_events").unwrap()).unwrap();
+    let mut open_fd = AsyncFd::new(open_ring).unwrap();
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
 
@@ -172,7 +183,44 @@ async fn main() {
 
                 guard.clear_ready();
             }
-            // arm 3
+
+            //arm3
+            // open events
+            Ok(mut guard) = open_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe {
+                        &*(item.as_ptr() as *const OpenEvent)
+                    };
+
+                    let comm = std::str::from_utf8(&event.comm)
+                        .unwrap_or("?")
+                        .trim_end_matches('\0')
+                        .to_string();
+
+                    let filename = std::str::from_utf8(&event.filename)
+                        .unwrap_or("?")
+                        .trim_end_matches('\0')
+                        .to_string();
+
+                    // do not print every file open that will flood the whole thing
+                    // so only run the detection and print if fires
+                    if let Some(alert) = detection::check_sensitive_file_read(
+                        &comm,
+                        &filename,
+                        event.pid,
+                        "unknown", // no ancestory for open evtns yet
+                        &config.filters.safe_file_readers
+                    ) {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                    }
+                }
+
+                guard.clear_ready();
+            }
+
+            // arm 4
             // Shutdowen with Ctrl + C. Don't remove for now
             _ = tokio::signal::ctrl_c() => {
                 println!("\nShutting down...");

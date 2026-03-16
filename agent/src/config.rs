@@ -10,6 +10,7 @@ pub struct Config {
 pub struct Filters {
     pub safe_shell_launchers: Vec<String>,
     pub ignored_comms: Vec<String>,
+    pub safe_file_readers: Vec<String>,
 }
 
 impl Config {
@@ -36,6 +37,7 @@ impl Config {
                     "sudo".into(), "su".into(), "login".into()
                 ],
                 ignored_comms: vec![],
+                safe_file_readers: vec![],
             } 
         }
     }

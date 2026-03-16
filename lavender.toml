@@ -4,10 +4,18 @@ safe_shell_launchers = [
     "bash", "sh", "zsh", "fish",
     "tmux", "alacritty", "kitty",
     "sshd", "sudo", "su", "login",
-    "hyprland", "code"
+    "Hyprland", "code"
 ]
 
 #ignore this one as it is too common
 ignored_comms = [
     "cpuUsage.sh"
+]
+
+safe_file_readers = [
+    "code",
+    "vim",
+    "nvim",
+    "nano",
+    
 ]
