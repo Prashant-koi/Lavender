@@ -1,3 +1,5 @@
+pub mod detection;
+
 use aya::Ebpf;
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
@@ -6,7 +8,7 @@ use std::collections::HashMap;
 use tokio::io::unix::AsyncFd;
 
 #[derive(Clone, Debug)]
-struct ProcessNode {
+pub struct ProcessNode {
     pid: u32,
     ppid: u32,
     comm: String,
