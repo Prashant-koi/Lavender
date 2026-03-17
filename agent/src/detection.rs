@@ -27,6 +27,21 @@ const SAFE_FILE_READERS: &[&str] = &[
 //what counts as a shell being spawned
 const SHELLS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
 
+// shells making network connections is almost never legitimate
+const SHELL_COMMS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
+
+// ports associated with reverse shells and C2 frameworks
+const SUSPICIOUS_PORTS: &[u16] = &[
+    4444,   // metasploit default
+    1337,   // common leet port
+    9001,   // common C2
+    9999,   // common C2
+    6666,   // common backdoor
+    31337,  // classic
+    5555,   // android debug + common C2
+];
+
+
 pub struct Alert {
     pub pid: u32,
     pub rule: &'static str,
@@ -92,6 +107,56 @@ pub fn check_sensitive_file_read (
         pid: event_pid , 
         rule: "T1003 [Sensitive file read]",
         detail: format!("'{}' opened sensitive file: {}", comm, filename), 
+        ancestry: ancestry.to_string(),
+    })
+}
+
+pub fn check_shell_network_connection(
+    comm: &str,
+    dest_ip: &str,
+    dest_port: u16,
+    event_pid: u32,
+    ancestry: &str
+) -> Option<Alert> {
+    //check if process is a shell
+    let is_shell = SHELL_COMMS.iter().any(|s| comm == *s);
+    if !is_shell {
+        return  None;
+    }
+
+    // shells connectiong to loopback is not that suspicious
+    if dest_ip.starts_with("127.") || dest_ip == "::1" {
+        return None;
+    }
+
+    Some(Alert { pid: event_pid, 
+        rule: "T1059 [Shell making outbound connection]", 
+        detail: format!(
+            "'{}' opened network connection to {}:{}",
+            comm, dest_ip, dest_port
+        ), 
+        ancestry: ancestry.to_string(),
+    })
+}
+
+pub fn check_suspicious_port(
+    comm: &str,
+    dest_ip: &str,
+    dest_port: u16,
+    event_pid: u32,
+    ancestry: &str,
+) -> Option<Alert> {
+    let is_suspicious_port = SUSPICIOUS_PORTS.contains(&dest_port);
+    if !is_suspicious_port {
+        return None;
+    }
+
+    Some(Alert { pid: event_pid,
+        rule: "T1071 [Connection to suspicious port]",
+        detail: format!(
+            "'{}' connected to {}:{} (known C2/reverse shell port)",
+            comm, dest_ip, dest_port
+        ),
         ancestry: ancestry.to_string(),
     })
 }
