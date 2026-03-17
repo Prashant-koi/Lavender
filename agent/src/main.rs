@@ -6,7 +6,7 @@ use aya::Ebpf;
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
 #[derive(Clone, Debug)]
@@ -109,6 +109,7 @@ async fn main() {
     let mut conn_fd = AsyncFd::new(conn_ring).unwrap();
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
+    let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -261,6 +262,17 @@ async fn main() {
                     let dest_ip = output::format_ip(event);
 
                     output::print_conn(event, &comm);
+
+                    //check if the connection is has been made for the first time
+                    if !seen_network_callers.contains(&comm) {
+                        seen_network_callers.insert(comm.clone());
+                        //print this if it is the first time command has made an network connection
+                        output::print_alert(event.pid, 
+                            "T1071 [First time Network Caller]",
+                            &format!("'{}' made its first observed outbound connection to {}:{}",
+                                comm, dest_ip, event.dport),
+                            "unknown");
+                    }
 
                     // Rule 1, there is high confidence of suspicious network connection
                     if let Some(alert) = detection::check_shell_network_connection(
