@@ -66,7 +66,7 @@ pub fn print_alert(pid: u32, rule: &str, detail: &str, ancestry: &str) {
 }
 
 //formatting of ip from the 4/16 byts of IPv4/IPv6
-fn format_ip(event: &ConnEvent) -> String {
+pub fn format_ip(event: &ConnEvent) -> String {
     if event.af == 2 {
         //IPV4, which is first 4 bytes
         format!("{}.{}.{}.{}",

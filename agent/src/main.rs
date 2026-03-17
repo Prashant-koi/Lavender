@@ -258,7 +258,32 @@ async fn main() {
                         continue;
                     }
 
+                    let dest_ip = output::format_ip(event);
+
                     output::print_conn(event, &comm);
+
+                    // Rule 1, there is high confidence of suspicious network connection
+                    if let Some(alert) = detection::check_shell_network_connection(
+                        &comm,
+                        &dest_ip,
+                        event.dport,
+                        event.pid,
+                        "unknown"
+                    ) {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                    }
+
+                    // Rule 2, there is a midium level of confidence in this case
+                    if let Some(alert) = detection::check_suspicious_port(
+                        &comm,
+                        &dest_ip,
+                        event.dport,
+                        event.pid,
+                        "unknown",
+                    ) {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                    }
+
                 }
 
                 guard.clear_ready();
