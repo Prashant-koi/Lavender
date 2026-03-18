@@ -43,6 +43,27 @@ fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
     chain.join("=>")
 }
 
+// ppid resolve function
+fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
+    if kernel_ppid != 0 {
+        return kernel_ppid;
+    }
+
+    let status_path = format!("/proc/{}/status", pid);
+    let contents = match std::fs::read_to_string(status_path) {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+
+    for line in contents.lines() {
+        if let Some(rest) = line.strip_prefix("PPid:") {
+            return rest.trim().parse::<u32>().unwrap_or(0);
+        }
+    }
+
+    0
+}
+
 #[tokio::main]
 async fn main() {
     // we will load the config first
@@ -141,6 +162,8 @@ async fn main() {
                         .trim_end_matches('\0')
                         .to_string();
 
+                    let ppid = resolve_ppid(event.pid, event.ppid);
+
                     let user = user_db.resolve(event.uid);
 
                     // we will keep latest process metadata so we can reconstruct lineage
@@ -148,7 +171,7 @@ async fn main() {
                         event.pid,
                         ProcessNode {
                             pid: event.pid,
-                            ppid: event.ppid,
+                            ppid,
                             comm: comm.to_string(),
                             filename: filename.to_string(),
                         },
@@ -161,7 +184,7 @@ async fn main() {
                         continue;
                     }
                 
-                    output::print_exec(event.pid, event.ppid, &user, &comm, &filename, &ancestry);
+                    output::print_exec(event.pid, ppid, &user, &comm, &filename, &ancestry);
 
 
                     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs

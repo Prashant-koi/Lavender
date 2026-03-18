@@ -48,8 +48,7 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
         (*data).pid  = (id >> 32) as u32;
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm = comm;
-
-        (*data).ppid = 0; // just set ppid as 0 here this will be resolved in the userspace via process tree anyway
+        (*data).ppid = 0; // will resolve this in userspace side don't even try doing that here please
 
         // args[0] = filename pointer 
         let filename_ptr = match ctx.read_at::<u64>(16) {
