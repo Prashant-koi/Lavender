@@ -1,0 +1,16 @@
+[package]
+name = "lavender-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aya-ebpf = "0.1"
+aya-lod-ebpf = "0.1"
+common = {path = "../common"}
+
+[lib]
+path = "Src/main.rs"
+
+[[bin]]
+name = "lavender.ebpf"
+path = "src/main.rs"
