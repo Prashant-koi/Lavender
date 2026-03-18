@@ -40,12 +40,14 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
 
     let id   = bpf_get_current_pid_tgid();
     let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
 
     unsafe {
         let data = e.as_mut_ptr();
 
         (*data).pid  = (id >> 32) as u32;
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm = comm;
 
         (*data).ppid = 0; // just set ppid as 0 here this will be resolved in the userspace via process tree anyway
 
@@ -95,7 +97,7 @@ pub fn handle_open(ctx: TracePointContext) -> i32 {
 }
 
 fn try_handle_open(ctx: &TracePointContext) -> Result<(), i64> {
-    let mut o = match OPEN_EVENTS.reserve::<OpenEvent>(0) {
+    let o = match OPEN_EVENTS.reserve::<OpenEvent>(0) {
         Some(o) => o,
         None    => return Ok(()),
     };

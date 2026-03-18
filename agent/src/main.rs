@@ -97,18 +97,18 @@ async fn main() {
 
     // Get a handle to the ring buffer map used to send events
     // from eBPF (from the kernel space) to this user-space process
-    let execve_ring = RingBuf::try_from(bpf.take_map("exec_events").unwrap()).unwrap();
+    let execve_ring = RingBuf::try_from(bpf.take_map("EXEC_EVENTS").unwrap()).unwrap();
     // Wrap ring buffer in AsyncFd so tokio can await readiness
     // without blocking the async runtime.
     let mut ring_fd = AsyncFd::new(execve_ring).unwrap();
     
-    let exit_ring = RingBuf::try_from(bpf.take_map("exit_events").unwrap()).unwrap();
+    let exit_ring = RingBuf::try_from(bpf.take_map("EXIT_EVENTS").unwrap()).unwrap();
     let mut exit_fd = AsyncFd::new(exit_ring).unwrap();
 
-    let open_ring = RingBuf::try_from(bpf.take_map("open_events").unwrap()).unwrap();
+    let open_ring = RingBuf::try_from(bpf.take_map("OPEN_EVENTS").unwrap()).unwrap();
     let mut open_fd = AsyncFd::new(open_ring).unwrap();
 
-    let conn_ring = RingBuf::try_from(bpf.take_map("conn_events").unwrap()).unwrap();
+    let conn_ring = RingBuf::try_from(bpf.take_map("CONN_EVENTS").unwrap()).unwrap();
     let mut conn_fd = AsyncFd::new(conn_ring).unwrap();
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
