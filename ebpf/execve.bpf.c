@@ -215,7 +215,7 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
         bpf_probe_read_user(&sa, sizeof(sa), addr);
 
         e->dport = __builtin_bswap16(sa.sin6_port);
-        __builtin_memcpy(&e->daddr, &sa.sin6_addr, 4);
+        __builtin_memcpy(&e->daddr, &sa.sin6_addr, 16);
     } else 
     {
         // mybe unix socker or something else 
