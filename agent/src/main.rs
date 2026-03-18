@@ -1,6 +1,7 @@
 pub mod detection;
 pub mod output;
 pub mod config;
+pub mod users;
 
 use aya::Ebpf;
 use aya::programs::TracePoint;
@@ -46,6 +47,7 @@ fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
 async fn main() {
     // we will load the config first
     let config = config::Config::load("../lavender.toml");
+    let user_db = users::UserDb::load();
 
     // We will Load the compiled eBPF object file.
     // This contains the kernel-side program and maps.
@@ -138,6 +140,8 @@ async fn main() {
                         .trim_end_matches('\0')
                         .to_string();
 
+                    let user = user_db.resolve(event.uid);
+
                     // we will keep latest process metadata so we can reconstruct lineage
                     process_tree.insert(
                         event.pid,
@@ -151,12 +155,13 @@ async fn main() {
 
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
 
-                    output::print_exec(event.pid, event.ppid, &comm, &filename, &ancestry);
-
                     //we will skip the ignored processes(those mentioned in the lavender.toml)
                     if config.filters.ignored_comms.iter().any(|s| comm.contains(s.as_str())) {
                         continue;
                     }
+                
+                    output::print_exec(event.pid, event.ppid, &user, &comm, &filename, &ancestry);
+
 
                     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
                     if let Some(alert) = detection::check_suspicious_shell_spawn(
@@ -259,9 +264,10 @@ async fn main() {
                         continue;
                     }
 
+                    let user = user_db.resolve(event.uid);
                     let dest_ip = output::format_ip(event);
 
-                    output::print_conn(event, &comm);
+                    output::print_conn(event, &comm, &user);
 
                     //check if the connection is has been made for the first time
                     if !seen_network_callers.contains(&comm) {

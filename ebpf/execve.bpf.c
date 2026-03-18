@@ -13,6 +13,7 @@ struct exec_event
 {
     u32 pid;
     u32 ppid;
+    u32 uid;
     u8  comm[16];    // process name, kernel limits this to 16 bytes (TASK_COMM_LEN)
     u8  filename[256];
 };
@@ -41,6 +42,7 @@ struct open_event
 struct conn_event 
 {
     u32 pid;
+    u32 uid;
     u8 comm[16];
     u8 daddr[16]; // the destiantion ip is beig enough for IPv6, IPv4 uses the first 4 bytes
     u16 dport; // the destination port
@@ -83,7 +85,7 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 256 * 1042);
+    __uint(max_entries, 256 * 1024);
 } conn_events SEC(".maps");
 
 /*
@@ -99,6 +101,10 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
     // the uppper 32 bits is pid and the lower 32 is tgid(thread group ID) that the bpf_get_current_task() returns
     u64 id = bpf_get_current_pid_tgid();
     e->pid = id >> 32;
+
+    // add the uid the lower 32 bits is uid upper 32 is gid
+    u64 ugid =  bpf_get_current_uid_gid();
+    e->uid = (u32)(ugid & 0xFFFFFFFF);
 
     // we will read the parent pid usinf CO-RE so that ensures that it is portable
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
@@ -171,9 +177,17 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
     struct conn_event *e = bpf_ringbuf_reserve(&conn_events, sizeof(*e), 0);
     if (!e) return 0;
 
+    // initialize fields in case a partial parse path is hit
+    __builtin_memset(&e->daddr, 0, sizeof(e->daddr));
+    e->dport = 0;
+
     //upper 32 bits is pid
     u64 id = bpf_get_current_pid_tgid();
     e->pid = id >> 32;
+
+    // add the uid the lower 32 bits is uid upper 32 is gid
+    u64 ugid =  bpf_get_current_uid_gid();
+    e->uid = (u32)(ugid & 0xFFFFFFFF);
 
     //command name (comm)
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
@@ -194,14 +208,14 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
         e->dport = __builtin_bswap16(sa.sin_port);
 
         //copy 4 bytes of IPv4 address into first 4 bytes of daddr
-        bpf_probe_read_user(&e->daddr, 4, &sa.sin_addr);
+        __builtin_memcpy(&e->daddr, &sa.sin_addr, 4);
     } else if (af == 10) // AF-INET6 -IPv6
     {
         struct sockaddr_in6 sa = {};
         bpf_probe_read_user(&sa, sizeof(sa), addr);
 
         e->dport = __builtin_bswap16(sa.sin6_port);
-        bpf_probe_read_user(&e->daddr, 16, &sa.sin6_addr);
+        __builtin_memcpy(&e->daddr, &sa.sin6_addr, 4);
     } else 
     {
         // mybe unix socker or something else 

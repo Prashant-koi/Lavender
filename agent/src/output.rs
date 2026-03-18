@@ -17,6 +17,7 @@ pub struct ExecOutput<'a> {
     pub kind: &'static str,   // always be "exec"
     pub pid: u32,
     pub ppid: u32,
+    pub user: &'a str,
     pub comm: &'a str,
     pub filename: &'a str,
     pub ancestry: &'a str,
@@ -35,11 +36,12 @@ pub struct AlertOutput<'a> {
 }
 
 //will print exec in json format
-pub fn print_exec(pid: u32, ppid: u32, comm: &str, filename: &str, ancestry: &str) {
+pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, ancestry: &str) {
     let event = ExecOutput {
         kind: "exec",
         pid,
         ppid,
+        user,
         comm,
         filename,
         ancestry,
@@ -91,16 +93,18 @@ pub struct ConnOutput<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub pid: u32,
+    pub user: &'a str,
     pub comm: &'a str,
     pub dest_ip: String,
     pub dest_port: u16,
     pub timestamp: u64,
 }
 
-pub fn print_conn(event: &ConnEvent, comm: &str) {
+pub fn print_conn(event: &ConnEvent, comm: &str, user: &str) {
     let out = ConnOutput {
         kind: "conn",
         pid: event.pid,
+        user,
         comm,
         dest_ip: format_ip(event),
         dest_port: event.dport,
