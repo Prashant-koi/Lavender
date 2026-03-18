@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly"
+targets = ["bpfel-unknown-none"]
+components = ["rust-src"]

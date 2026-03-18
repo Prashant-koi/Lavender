@@ -5,12 +5,9 @@ edition = "2021"
 
 [dependencies]
 aya-ebpf = "0.1"
-aya-lod-ebpf = "0.1"
+aya-log-ebpf = "0.1"
 common = {path = "../common"}
 
-[lib]
-path = "Src/main.rs"
-
 [[bin]]
-name = "lavender.ebpf"
+name = "lavender-ebpf"
 path = "src/main.rs"

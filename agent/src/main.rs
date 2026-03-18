@@ -3,7 +3,7 @@ pub mod output;
 pub mod config;
 pub mod users;
 
-use aya::Ebpf;
+use aya::{Bpf, include_bytes_aligned};
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
@@ -46,12 +46,13 @@ fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
 #[tokio::main]
 async fn main() {
     // we will load the config first
-    let config = config::Config::load("../lavender.toml");
+    let config = config::Config::load("lavender.toml");
     let user_db = users::UserDb::load();
 
     // We will Load the compiled eBPF object file.
     // This contains the kernel-side program and maps.
-    let mut bpf = Ebpf::load_file("../ebpf/execve.bpf.o").unwrap();
+    let bytecode = include_bytes_aligned!(env!("LAVENDER_EBPF_PATH"));
+    let mut bpf  = Bpf::load(bytecode).unwrap();
 
     // Grab the tracepoint program by name and cast it to TracePoint
     // THis way we can load and attach it

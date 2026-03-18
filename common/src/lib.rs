@@ -1,3 +1,5 @@
+#![no_std]
+
 #[repr(C)]
 pub struct ExecEvent {
     pub pid: u32,

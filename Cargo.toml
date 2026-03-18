@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "agent",
+  "common",
+  "lavender-ebpf",
+]
+resolver = "2"
