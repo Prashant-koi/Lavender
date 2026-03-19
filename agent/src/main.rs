@@ -291,7 +291,7 @@ async fn main() {
                         &comm,
                         &filename,
                         event.pid,
-                        "unknown", // no ancestory for open evtns yet
+                        &ancestry_for_event,
                         &config.filters.safe_file_readers,
                         &config.filters.sensitive_files,
                     ) {
@@ -360,7 +360,7 @@ async fn main() {
                             "T1071 [First time Network Caller]",
                             &format!("'{}' made its first observed outbound connection to {}:{}",
                                 comm, dest_ip, event.dport),
-                            "unknown");
+                            &ancestry_for_event);
                     }
 
                     // Rule 1, there is high confidence of suspicious network connection
@@ -369,7 +369,7 @@ async fn main() {
                         &dest_ip,
                         event.dport,
                         event.pid,
-                        "unknown",
+                        &ancestry_for_event,
                         &config.filters.shell_names,
                     ) {
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
@@ -381,7 +381,7 @@ async fn main() {
                         &dest_ip,
                         event.dport,
                         event.pid,
-                        "unknown",
+                        &ancestry_for_event,
                         &config.filters.suspicious_ports,
                     ) {
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
