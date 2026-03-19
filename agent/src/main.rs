@@ -2,11 +2,13 @@ pub mod detection;
 pub mod output;
 pub mod config;
 pub mod users;
+pub mod correlator;
 
 use aya::{Bpf, include_bytes_aligned};
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
+use correlator::{Correlator, BufferedEvent, EventKind};
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
@@ -22,7 +24,7 @@ fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
     let mut chain = vec![];
     let mut current_pid = pid;
 
-    //we will walk upward through parents and go max of 8 levels
+        //we will walk upward through parents and go max of 8 levels
     // max limit to stop inf loops in case the data is weird
     for _ in 0..8 {
         match tree.get(&current_pid) {
@@ -134,6 +136,7 @@ async fn main() {
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
     let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
+    let mut correlator = Correlator::new();
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -178,6 +181,22 @@ async fn main() {
                     );
 
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
+                    
+                    // inser to the correlator and check
+                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
+                        kind:      EventKind::Exec,
+                        comm:      comm.clone(),
+                        detail:    filename.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        ancestry:  ancestry.clone(),
+                    });
+
+                    if let Some(alert) = correlation_alert {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry);
+                    }
 
                     //we will skip the ignored processes(those mentioned in the lavender.toml)
                     if config.filters.ignored_comms.iter().any(|s| comm.contains(s.as_str())) {
@@ -219,6 +238,8 @@ async fn main() {
                         // println!("[exit     {:>6}] removed from tree", pid)
                     }
 
+                    correlator.remove(pid); //remove from correlator map
+
                     // temporary debug line 
                     // println!("[tree size: {}]", process_tree.len());
                 };
@@ -246,6 +267,29 @@ async fn main() {
                         .unwrap_or("?")
                         .trim_end_matches('\0')
                         .to_string();
+
+                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
+                    let ancestry_for_event = if ancestry.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        ancestry
+                    };
+
+                    // check
+                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
+                        kind:      EventKind::FileOpen,
+                        comm:      comm.clone(),
+                        detail:    filename.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        ancestry:  ancestry_for_event.clone(),
+                    });
+
+                    if let Some(alert) = correlation_alert {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry_for_event);
+                    }
 
                     // do not print every file open that will flood the whole thing
                     // so only run the detection and print if fires
@@ -290,6 +334,29 @@ async fn main() {
 
                     let user = user_db.resolve(event.uid);
                     let dest_ip = output::format_ip(event);
+
+                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
+                    let ancestry_for_event = if ancestry.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        ancestry
+                    };
+
+                    //check the rules by pushing to correlator
+                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
+                        kind:      EventKind::Connect,
+                        comm:      comm.clone(),
+                        detail:    dest_ip.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        ancestry:  ancestry_for_event.clone(),
+                    });
+
+                    if let Some(alert) = correlation_alert {
+                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry_for_event);
+                    }
 
                     output::print_conn(event, &comm, &user);
 
