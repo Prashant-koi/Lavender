@@ -1,7 +1,6 @@
 [filters] 
 # processes that are allowed to spawn shells
 safe_shell_launchers = [
-    "bash", "sh", "zsh", "fish",
     "tmux", "alacritty", "kitty",
     "sshd", "sudo", "su", "login",
     "Hyprland", "code"
@@ -13,9 +12,63 @@ ignored_comms = [
 ]
 
 safe_file_readers = [
+    "sshd",
+    "sudo",
+    "passwd",
+    "shadow",
+    "pam",
+    "bash",
+    "zsh",
+    "sh",
     "code",
     "vim",
     "nvim",
-    "nano",
-    
+    "nano"
 ]
+
+# what counts as shell process in detections and correlation
+shell_names = [
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "dash"
+]
+
+# paths considered sensitive when read/opened
+sensitive_files = [
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/sudoers",
+    "/etc/sudoers.d",
+    "/.ssh/id_rsa",
+    "/.ssh/id_ed25519",
+    "/.ssh/authorized_keys",
+    "/.bash_history",
+    "/.zsh_history",
+    "/root/.ssh"
+]
+
+# ports associated with common reverse shells and C2
+suspicious_ports = [
+    4444,
+    1337,
+    9001,
+    9999,
+    6666,
+    31337,
+    5555
+]
+
+# high-noise comms excluded from correlation chain alerts
+noisy_comms = [
+    "code",
+    "cpuUsage",
+    "cargo",
+    "rustc",
+    "make"
+]
+
+# correlation buffer sizing and staleness window
+correlator_max_events = 20
+correlator_max_age_secs = 30

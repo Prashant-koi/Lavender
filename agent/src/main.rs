@@ -66,6 +66,11 @@ fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
     0
 }
 
+fn decode_c_string(bytes: &[u8]) -> String {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).to_string()
+}
+
 #[tokio::main]
 async fn main() {
     // we will load the config first
@@ -136,7 +141,7 @@ async fn main() {
 
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
     let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
-    let mut correlator = Correlator::new();
+    let mut correlator = Correlator::from_filters(&config.filters);
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -155,15 +160,9 @@ async fn main() {
 
                     // eBPF sends fixed-size null-terminated byte arrays.
                     // Convert to UTF-8 strings and strip trailing null bytes.
-                    let comm = std::str::from_utf8(&event.comm)
-                        .unwrap_or("?")
-                        .trim_end_matches('\0')
-                        .to_string();
+                    let comm = decode_c_string(&event.comm);
 
-                    let filename = std::str::from_utf8(&event.filename)
-                        .unwrap_or("?")
-                        .trim_end_matches('\0')
-                        .to_string();
+                    let filename = decode_c_string(&event.filename);
 
                     let ppid = resolve_ppid(event.pid, event.ppid);
 
@@ -213,6 +212,7 @@ async fn main() {
                         event.pid,
                         &ancestry,
                         &config.filters.safe_shell_launchers,
+                        &config.filters.shell_names,
                     ) {
                         // I will print it in red so that the Alert stands out
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
@@ -258,15 +258,9 @@ async fn main() {
                         &*(item.as_ptr() as *const OpenEvent)
                     };
 
-                    let comm = std::str::from_utf8(&event.comm)
-                        .unwrap_or("?")
-                        .trim_end_matches('\0')
-                        .to_string();
+                    let comm = decode_c_string(&event.comm);
 
-                    let filename = std::str::from_utf8(&event.filename)
-                        .unwrap_or("?")
-                        .trim_end_matches('\0')
-                        .to_string();
+                    let filename = decode_c_string(&event.filename);
 
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
                     let ancestry_for_event = if ancestry.is_empty() {
@@ -298,7 +292,8 @@ async fn main() {
                         &filename,
                         event.pid,
                         "unknown", // no ancestory for open evtns yet
-                        &config.filters.safe_file_readers
+                        &config.filters.safe_file_readers,
+                        &config.filters.sensitive_files,
                     ) {
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
                     }
@@ -317,10 +312,7 @@ async fn main() {
                         &*(item.as_ptr() as *const ConnEvent)
                     };
 
-                    let comm = std::str::from_utf8(&event.comm)
-                        .unwrap_or("?")
-                        .trim_end_matches('\0')
-                        .to_string();
+                    let comm = decode_c_string(&event.comm);
 
                     //we will skip port 0 as they are internal socket operations
                     if event.dport == 0 {
@@ -377,7 +369,8 @@ async fn main() {
                         &dest_ip,
                         event.dport,
                         event.pid,
-                        "unknown"
+                        "unknown",
+                        &config.filters.shell_names,
                     ) {
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
                     }
@@ -389,6 +382,7 @@ async fn main() {
                         event.dport,
                         event.pid,
                         "unknown",
+                        &config.filters.suspicious_ports,
                     ) {
                         output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
                     }

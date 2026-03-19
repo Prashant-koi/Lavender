@@ -1,47 +1,5 @@
 // For detection rules
 
-// when read by unexpected processes these might be suspicious
-const SENSITIVE_FILES: &[&str] = &[
-    "/etc/shadow",
-    "/etc/sudoers",
-    "/etc/sudoers.d",
-    "/.ssh/id_rsa",
-    "/.ssh/id_ed25519",
-    "/.ssh/authorized_keys",
-    "/.bash_history",
-    "/.zsh_history",
-    "/root/.ssh",
-];
-
-const SAFE_FILE_READERS: &[&str] = &[
-    "sshd",        // reads authorized_keys
-    "sudo",        // reads sudoers
-    "passwd",      // reads shadow
-    "shadow",      // reads shadow
-    "pam",         // reads shadow via pam modules
-    "bash",        // reads its own history
-    "zsh",         // reads its own history
-    "sh",
-];
-
-//what counts as a shell being spawned
-const SHELLS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
-
-// shells making network connections is almost never legitimate
-const SHELL_COMMS: &[&str] = &["bash", "sh", "zsh", "fish", "dash"];
-
-// ports associated with reverse shells and C2 frameworks
-const SUSPICIOUS_PORTS: &[u16] = &[
-    4444,   // metasploit default
-    1337,   // common leet port
-    9001,   // common C2
-    9999,   // common C2
-    6666,   // common backdoor
-    31337,  // classic
-    5555,   // android debug + common C2
-];
-
-
 pub struct Alert {
     pub pid: u32,
     pub rule: &'static str,
@@ -59,17 +17,19 @@ pub fn check_suspicious_shell_spawn(
     event_pid: u32,
     ancestry: &str,
     safe_launchers: &[String],
+    shell_names: &[String],
 ) -> Option<Alert> {
     let target_base = basename(target_filename);
 
     //check if the new process is shell
-    let target_is_shell = SHELLS.iter().any(|s| target_base == *s);
+    let target_is_shell = shell_names.iter().any(|s| target_base == s);
     if !target_is_shell {
         return None
     }
 
     //allow known normal launchers
-    let laucher_is_safe = safe_launchers.iter().any(|s| launcher_comm.contains(s));
+    let laucher_is_safe = safe_launchers.iter().any(|s| launcher_comm.contains(s))
+        || shell_names.iter().any(|s| launcher_comm.contains(s.as_str()));
     if laucher_is_safe {
         return None;
     }
@@ -90,15 +50,16 @@ pub fn check_sensitive_file_read (
     event_pid: u32,
     ancestry: &str,
     safe_readers: &[String],
+    sensitive_files: &[String],
 ) -> Option<Alert> {
     // check if it is sensitive file
     // i will use contains() instead of == because path mighht be absolute
-    let is_sensitve = SENSITIVE_FILES.iter().any(|s| filename.contains(s));
+    let is_sensitve = sensitive_files.iter().any(|s| filename.contains(s));
     if !is_sensitve {
         return  None;
     }
 
-    let is_safe = SAFE_FILE_READERS.iter().any(|s| comm.contains(s)) || safe_readers.iter().any(|s| comm.contains(s.as_str()));
+    let is_safe = safe_readers.iter().any(|s| comm.contains(s.as_str()));
     if is_safe {
         return None;
     }
@@ -116,10 +77,11 @@ pub fn check_shell_network_connection(
     dest_ip: &str,
     dest_port: u16,
     event_pid: u32,
-    ancestry: &str
+    ancestry: &str,
+    shell_names: &[String],
 ) -> Option<Alert> {
     //check if process is a shell
-    let is_shell = SHELL_COMMS.iter().any(|s| comm == *s);
+    let is_shell = shell_names.iter().any(|s| comm == s);
     if !is_shell {
         return  None;
     }
@@ -145,8 +107,9 @@ pub fn check_suspicious_port(
     dest_port: u16,
     event_pid: u32,
     ancestry: &str,
+    suspicious_ports: &[u16],
 ) -> Option<Alert> {
-    let is_suspicious_port = SUSPICIOUS_PORTS.contains(&dest_port);
+    let is_suspicious_port = suspicious_ports.contains(&dest_port);
     if !is_suspicious_port {
         return None;
     }

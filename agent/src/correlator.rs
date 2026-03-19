@@ -1,5 +1,7 @@
 use std::{collections::{HashMap, VecDeque}, time::{SystemTime, UNIX_EPOCH}};
 
+use crate::config::Filters;
+
 // what kind of event we are going to buffer
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventKind {
@@ -32,14 +34,20 @@ pub struct Correlator {
     buffers: HashMap<u32, VecDeque<BufferedEvent>>,//pid to recent events mapping for a given pid
     max_events: usize, // the max events to keep per process
     max_age_secs: u64, // max age before an event is stale
+    shell_names: Vec<String>,
+    sensitive_file_patterns: Vec<String>,
+    noisy_comms: Vec<String>,
 }
 
 impl Correlator { // implementing some methids for the correlator struct
-    pub fn new() -> Self {
+    pub fn from_filters(filters: &Filters) -> Self {
         Self { 
             buffers: HashMap::new(),
-            max_events: 20, 
-            max_age_secs: 30,
+            max_events: filters.correlator_max_events,
+            max_age_secs: filters.correlator_max_age_secs,
+            shell_names: filters.shell_names.clone(),
+            sensitive_file_patterns: filters.sensitive_files.clone(),
+            noisy_comms: filters.noisy_comms.clone(),
         }
     }
 
@@ -98,6 +106,12 @@ impl Correlator { // implementing some methids for the correlator struct
             return None;
         }
 
+        // checking for noisly false positives
+        let latest_comm = current_buf.back().map(|e| e.comm.as_str()).unwrap_or("");
+        if self.noisy_comms.iter().any(|s| latest_comm.contains(s.as_str())) {
+            return None;
+        }
+
         // we wil first collect the event kinds in order which will just make the overall process easier for us
         let kinds: Vec<&EventKind> = related_events.iter().map(|e| &e.kind).collect();
 
@@ -105,7 +119,7 @@ impl Correlator { // implementing some methids for the correlator struct
         // this will check for the pattern when bash was spawned and it made a network connection
         let has_shell_exec = related_events.iter().any(|e| 
             e.kind == EventKind::Exec &&
-            ["bash","sh","zsh","dash","fish"].iter().any(|s| e.comm.contains(s))
+            self.shell_names.iter().any(|s| e.comm.contains(s.as_str()))
         );
 
         let has_external_connect = related_events.iter().any(|e|
@@ -129,8 +143,9 @@ impl Correlator { // implementing some methids for the correlator struct
         // we will try to find the patter of openign a sensitive file and then executing something
         let read_sensitive = related_events.iter().any(|e|
             e.kind == EventKind::FileOpen &&
-            ["/etc/shadow", "/etc/passwd","id_rsa"].iter()
-                .any(|s| e.detail.contains(s))
+            self.sensitive_file_patterns
+                .iter()
+                .any(|s| e.detail.contains(s.as_str()))
         );
 
         let exec_after = kinds.windows(2).any(|w|
@@ -152,12 +167,29 @@ impl Correlator { // implementing some methids for the correlator struct
         // rule checking for rapid process spawning for things like fork bomb, worm, enumeration scripts
         // the pattern it will check for is more than 5 exec events in 10s seconds, I feel like this will
         // have alot of false positives
-        let exec_count = related_events.iter().filter(|e| e.kind == EventKind::Exec).count();
+        // only evaluate this rule when the current event itself is exec so we don't keep re-firing on open/connect events
+        if current_event.kind != EventKind::Exec {
+            return None;
+        }
+
+        // exclude noisy comms from the rapid-spawn calculation to avoid editor/tooling burst false positives
+        let exec_events: Vec<&BufferedEvent> = related_events
+            .iter()
+            .filter(|e| e.kind == EventKind::Exec)
+            .filter(|e| !self.is_noisy_comm(&e.comm))
+            .collect();
+
+        // if the current chain ancestry is noisy (e.g. code), skip this rapid rule entirely
+        if Self::ancestry_has_noisy_comm(&current_event.ancestry, &self.noisy_comms) {
+            return None;
+        }
+
+        let exec_count = exec_events.len();
 
         if exec_count >= 5 {
-            let oldest_exec = related_events.iter().filter(|e| e.kind == EventKind::Exec).next().map(|e| e.timestamp).unwrap_or(0);
+            let oldest_exec = exec_events.first().map(|e| e.timestamp).unwrap_or(0);
 
-            let newest_exec = related_events.iter().filter(|e| e.kind == EventKind::Exec).last().map(|e| e.timestamp).unwrap_or(0);
+            let newest_exec = exec_events.last().map(|e| e.timestamp).unwrap_or(0);
 
             // all 5 or more withing 10 secs
             if newest_exec - oldest_exec < 10 {
@@ -202,6 +234,18 @@ impl Correlator { // implementing some methids for the correlator struct
 
         events.sort_by_key(|e| e.timestamp);
         events
+    }
+
+    fn is_noisy_comm(&self, comm: &str) -> bool {
+        self.noisy_comms
+            .iter()
+            .any(|s| comm.contains(s.as_str()))
+    }
+
+    fn ancestry_has_noisy_comm(ancestry: &str, noisy_comms: &[String]) -> bool {
+        ancestry
+            .split("=>")
+            .any(|segment| noisy_comms.iter().any(|n| segment.contains(n.as_str())))
     }
 
     fn is_related_ancestry(a: &str, b: &str) -> bool {
