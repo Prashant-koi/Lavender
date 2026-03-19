@@ -328,7 +328,7 @@ async fn main() {
                     }
 
                     //if localhost also skip
-                    if event.af == 2 && event.daddr[0] == 27 {
+                    if event.af == 2 && event.daddr[0] == 127 {
                         continue;
                     }
 
