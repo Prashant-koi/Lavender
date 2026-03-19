@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -65,18 +65,68 @@ fn default_correlator_max_age_secs() -> u64 {
 }
 
 impl Config {
+    pub fn load_auto() -> Self {
+        if let Ok(path) = std::env::var("LAVENDER_CONFIG") {
+            let candidate = PathBuf::from(path);
+            if candidate.exists() {
+                return Self::load_from_path(&candidate);
+            }
+        }
+
+        if let Some(path) = Self::find_in_ancestor_dirs("lavender.toml") {
+            return Self::load_from_path(&path);
+        }
+
+        eprintln!("[lavender] no config found, using defaults");
+        Self::default()
+    }
+
     pub fn load(path: &str) -> Self {
-        if !Path::new(path).exists() {
+        let path_ref = Path::new(path);
+        if !path_ref.exists() {
             // if no config file then use defaults
             eprintln!("[lavender] no config found at {}, using defaults", path);
             return Self::default();
         }
 
+        Self::load_from_path(path_ref)
+    }
+
+    fn load_from_path(path: &Path) -> Self {
         let contents = std::fs::read_to_string(path)
             .expect("could not read config file");
 
         toml::from_str(&contents)
             .expect("invalid TOML in config file")
+    }
+
+    fn find_in_ancestor_dirs(file_name: &str) -> Option<PathBuf> {
+        if let Ok(cwd) = std::env::current_dir() {
+            if let Some(path) = Self::search_upwards(cwd, file_name) {
+                return Some(path);
+            }
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                if let Some(path) = Self::search_upwards(exe_dir.to_path_buf(), file_name) {
+                    return Some(path);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn search_upwards(start: PathBuf, file_name: &str) -> Option<PathBuf> {
+        for dir in start.ancestors() {
+            let candidate = dir.join(file_name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+
+        None
     }
 
     fn default() -> Self {

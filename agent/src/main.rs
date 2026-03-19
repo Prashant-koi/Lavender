@@ -74,7 +74,7 @@ fn decode_c_string(bytes: &[u8]) -> String {
 #[tokio::main]
 async fn main() {
     // we will load the config first
-    let config = config::Config::load("lavender.toml");
+    let config = config::Config::load_auto();
     let user_db = users::UserDb::load();
 
     // We will Load the compiled eBPF object file.
