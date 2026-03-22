@@ -72,3 +72,22 @@ noisy_comms = [
 # correlation buffer sizing and staleness window
 correlator_max_events = 20
 correlator_max_age_secs = 30
+
+[response]
+# set to false to actually kill processes
+dry_run = true
+
+# min threshold to take an action
+kill_threshold = 200
+
+# there are some essential processes that can never be kill or else it might 
+# cause problems to the machine
+protected_comms = [
+    "systemd",
+    "sshd",
+    "sudo",
+    "init"
+    "lavender",
+    "agent",
+    "kernel",
+]

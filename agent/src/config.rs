@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub filters: Filters,
+    pub response: ResponseConfig,
 } 
 
 #[derive(Deserialize, Debug)]
@@ -23,6 +24,13 @@ pub struct Filters {
     pub correlator_max_events: usize,
     #[serde(default = "default_correlator_max_age_secs")]
     pub correlator_max_age_secs: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ResponseConfig {
+    pub dry_run: bool,
+    pub kill_threshold: u32,
+    pub protected_comms: Vec<String>,
 }
 
 fn default_shell_names() -> Vec<String> {
@@ -148,7 +156,15 @@ impl Config {
                 noisy_comms: default_noisy_comms(),
                 correlator_max_events: default_correlator_max_events(),
                 correlator_max_age_secs: default_correlator_max_age_secs(),
-            } 
+            } ,
+            response: ResponseConfig {
+                dry_run: true,
+                kill_threshold: 200, 
+                protected_comms: vec![
+                    "systemd".into(),"sshd".into(),
+                    "sudo".into(), "init".into(),
+                ],
+            }
         }
     }
 }
