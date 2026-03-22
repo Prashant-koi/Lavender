@@ -3,6 +3,7 @@ pub mod output;
 pub mod config;
 pub mod users;
 pub mod correlator;
+pub mod scorer;
 
 use aya::{Bpf, include_bytes_aligned};
 use aya::programs::TracePoint;
