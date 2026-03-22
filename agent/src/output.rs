@@ -35,6 +35,19 @@ pub struct AlertOutput<'a> {
     pub timestamp: u64,
 }
 
+#[derive(Serialize)]
+pub struct ScoredAlertOutput<'a> {
+    #[serde(rename= "type")]
+    pub kind:     &'static str,
+    pub pid:      u32,
+    pub rule:     &'a str,
+    pub detail:   &'a str,
+    pub ancestry: &'a str,
+    pub score:    u32,
+    pub severity: &'a str,   // "INFO", "WARNING", "HIGH", "CRITICAL"
+    pub timestamp: u64,
+}
+
 //will print exec in json format
 pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, ancestry: &str) {
     let event = ExecOutput {
@@ -65,6 +78,39 @@ pub fn print_alert(pid: u32, rule: &str, detail: &str, ancestry: &str) {
     // use this command from root of repo to get all alerts in a json file
     // sudo ./agent/target/debug/lavender-loader 1>/dev/null 2>alerts.json
     eprintln!("\x1b[31m{}\x1b[0m", serde_json::to_string(&event).unwrap());
+}
+
+pub fn print_scored_alert(
+    pid:      u32,
+    rule:     &str,
+    detail:   &str,
+    ancestry: &str,
+    score:    u32,
+    severity: &str,
+) {
+    let out = ScoredAlertOutput {
+        kind: "alert",
+        pid,
+        rule,
+        detail,
+        ancestry,
+        score,
+        severity,
+        timestamp: now_secs(),
+    };
+
+    // color based on severity
+    let color = match severity {
+        "CRITICAL" => "\x1b[31m",  // red
+        "HIGH"     => "\x1b[33m",  // yellow
+        "WARNING"  => "\x1b[93m",  // bright yellow
+        _          => "\x1b[0m",   // no color for info
+    };
+
+    eprintln!("{}{}\x1b[0m",
+        color,
+        serde_json::to_string(&out).unwrap()
+    );
 }
 
 //formatting of ip from the 4/16 byts of IPv4/IPv6

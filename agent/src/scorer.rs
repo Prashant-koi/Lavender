@@ -1,5 +1,16 @@
 use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
 
+
+// point values for each detection rule
+pub const SCORE_SHELL_SPAWN:        u32 = 40;  // T1059 unexpected shell spawn
+pub const SCORE_SENSITIVE_FILE:     u32 = 35;  // T1003 sensitive file read
+pub const SCORE_SUSPICIOUS_PORT:    u32 = 45;  // T1071 known C2 port
+pub const SCORE_SHELL_NETWORK:      u32 = 60;  // shell making outbound connection
+pub const SCORE_FIRST_NET_CALLER:   u32 = 15;  // first time network caller
+pub const SCORE_CHAIN_REVERSE_SHELL: u32 = 90; // correlation: shell + network
+pub const SCORE_CHAIN_CRED_EXEC:    u32 = 75;  // correlation: cred read + exec
+pub const SCORE_CHAIN_RAPID_SPAWN:  u32 = 60;  // correlation: rapid spawning
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Severity {
     Info,

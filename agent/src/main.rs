@@ -10,6 +10,8 @@ use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
 use correlator::{Correlator, BufferedEvent, EventKind};
+use scorer::Scorer;
+use scorer::*;
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
@@ -70,6 +72,19 @@ fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
 fn decode_c_string(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).to_string()
+}
+// making a function of this because we have been doing this alot
+fn add_score_and_print_alert(
+    scorer: &mut Scorer,
+    pid: u32,
+    rule: &'static str,
+    detail: &str,
+    ancestry: &str,
+    points: u32,
+) {
+    if let Some((score, severity)) = scorer.add_score(pid, rule, points) {
+        output::print_scored_alert(pid, rule, detail, ancestry, score, severity.label());
+    }
 }
 
 #[tokio::main]
@@ -143,6 +158,8 @@ async fn main() {
     let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
     let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
     let mut correlator = Correlator::from_filters(&config.filters);
+    let mut scorer = Scorer::new();
+
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -195,7 +212,14 @@ async fn main() {
                     });
 
                     if let Some(alert) = correlation_alert {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry,
+                            alert.severity,
+                        );
                     }
 
                     //we will skip the ignored processes(those mentioned in the lavender.toml)
@@ -215,8 +239,14 @@ async fn main() {
                         &config.filters.safe_shell_launchers,
                         &config.filters.shell_names,
                     ) {
-                        // I will print it in red so that the Alert stands out
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry,
+                            SCORE_SHELL_SPAWN,
+                        );
                     }
                 }
 
@@ -240,6 +270,8 @@ async fn main() {
                     }
 
                     correlator.remove(pid); //remove from correlator map
+
+                    scorer.remove(pid); 
 
                     // temporary debug line 
                     // println!("[tree size: {}]", process_tree.len());
@@ -283,7 +315,14 @@ async fn main() {
                     });
 
                     if let Some(alert) = correlation_alert {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry_for_event);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry_for_event,
+                            alert.severity,
+                        );
                     }
 
                     // do not print every file open that will flood the whole thing
@@ -296,7 +335,14 @@ async fn main() {
                         &config.filters.safe_file_readers,
                         &config.filters.sensitive_files,
                     ) {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry_for_event,
+                            SCORE_SHELL_SPAWN,
+                        );
                     }
                 }
 
@@ -348,7 +394,14 @@ async fn main() {
                     });
 
                     if let Some(alert) = correlation_alert {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &ancestry_for_event);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry_for_event,
+                            alert.severity,
+                        );
                     }
 
                     output::print_conn(event, &comm, &user);
@@ -373,7 +426,14 @@ async fn main() {
                         &ancestry_for_event,
                         &config.filters.shell_names,
                     ) {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry_for_event,
+                            SCORE_SHELL_SPAWN,
+                        );
                     }
 
                     // Rule 2, there is a midium level of confidence in this case
@@ -385,7 +445,14 @@ async fn main() {
                         &ancestry_for_event,
                         &config.filters.suspicious_ports,
                     ) {
-                        output::print_alert(alert.pid, alert.rule, &alert.detail, &alert.ancestry);
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry_for_event,
+                            SCORE_SHELL_SPAWN,
+                        );
                     }
 
                 }

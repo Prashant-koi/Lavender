@@ -57,10 +57,14 @@ cargo +nightly build --target bpfel-unknown-none -Z build-std=core --release
 From repository root:
 
 ```bash
-sudo cargo run --package agent
+cargo build --package agent
+sudo ./target/debug/agent
 ```
 
-Or run the compiled binary directly:
+Build as your normal user, then run the compiled binary with `sudo`.
+Avoid running Cargo itself with `sudo`.
+
+Or run only the binary directly after a prior build:
 
 ```bash
 sudo ./target/debug/agent
