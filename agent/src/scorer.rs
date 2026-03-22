@@ -11,6 +11,22 @@ pub const SCORE_CHAIN_REVERSE_SHELL: u32 = 90; // correlation: shell + network
 pub const SCORE_CHAIN_CRED_EXEC:    u32 = 75;  // correlation: cred read + exec
 pub const SCORE_CHAIN_RAPID_SPAWN:  u32 = 60;  // correlation: rapid spawning
 
+// Single source of truth for rule which does the points mapping.
+// Keep the rule labels exactly aligned with detection/correlation rule strings.
+pub fn score_for_rule(rule: &str) -> Option<u32> {
+    match rule {
+        "T1059 [Unexpected shell spawn]" => Some(SCORE_SHELL_SPAWN),
+        "T1003 [Sensitive file read]" => Some(SCORE_SENSITIVE_FILE),
+        "T1071 [Connection to suspicious port]" => Some(SCORE_SUSPICIOUS_PORT),
+        "T1059 [Shell making outbound connection]" => Some(SCORE_SHELL_NETWORK),
+        "T1071 [First time Network Caller]" => Some(SCORE_FIRST_NET_CALLER),
+        "CHAIN Reverse shell behaviour" => Some(SCORE_CHAIN_REVERSE_SHELL),
+        "CHAIN Credential access then execution" => Some(SCORE_CHAIN_CRED_EXEC),
+        "CHAIN Rapid process spawning" => Some(SCORE_CHAIN_RAPID_SPAWN),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Severity {
     Info,
@@ -101,6 +117,16 @@ impl Scorer {
         } else {
             None
         }
+    }
+
+    // Use this for normal runtime scoring so callsites only pass the rule label.
+    pub fn add_score_for_rule(
+        &mut self,
+        pid: u32,
+        rule: &'static str,
+    ) -> Option<(u32, Severity)> {
+        let points = score_for_rule(rule)?;
+        self.add_score(pid, rule, points)
     }
 
     pub fn remove(&mut self, pid: u32) { // clean up the score when a process exits

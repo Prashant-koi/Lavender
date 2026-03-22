@@ -11,7 +11,6 @@ use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
 use correlator::{Correlator, BufferedEvent, EventKind};
 use scorer::Scorer;
-use scorer::*;
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
@@ -80,9 +79,8 @@ fn add_score_and_print_alert(
     rule: &'static str,
     detail: &str,
     ancestry: &str,
-    points: u32,
 ) {
-    if let Some((score, severity)) = scorer.add_score(pid, rule, points) {
+    if let Some((score, severity)) = scorer.add_score_for_rule(pid, rule) {
         output::print_scored_alert(pid, rule, detail, ancestry, score, severity.label());
     }
 }
@@ -218,7 +216,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry,
-                            alert.severity,
                         );
                     }
 
@@ -245,7 +242,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry,
-                            SCORE_SHELL_SPAWN,
                         );
                     }
                 }
@@ -321,7 +317,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
-                            alert.severity,
                         );
                     }
 
@@ -341,7 +336,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
-                            SCORE_SHELL_SPAWN,
                         );
                     }
                 }
@@ -400,7 +394,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
-                            alert.severity,
                         );
                     }
 
@@ -409,12 +402,22 @@ async fn main() {
                     //check if the connection is has been made for the first time
                     if !seen_network_callers.contains(&comm) {
                         seen_network_callers.insert(comm.clone());
+                        let first_net_detail = format!(
+                            "'{}' made its first observed outbound connection to {}:{}",
+                            comm, dest_ip, event.dport
+                        );
                         //print this if it is the first time command has made an network connection
                         output::print_alert(event.pid, 
                             "T1071 [First time Network Caller]",
-                            &format!("'{}' made its first observed outbound connection to {}:{}",
-                                comm, dest_ip, event.dport),
+                            &first_net_detail,
                             &ancestry_for_event);
+
+                        // We score this event even if it does not cross warning threshold,
+                        // so later high-confidence rules can aggregate faster.
+                        let _ = scorer.add_score_for_rule(
+                            event.pid,
+                            "T1071 [First time Network Caller]",
+                        );
                     }
 
                     // Rule 1, there is high confidence of suspicious network connection
@@ -432,7 +435,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
-                            SCORE_SHELL_SPAWN,
                         );
                     }
 
@@ -451,7 +453,6 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
-                            SCORE_SHELL_SPAWN,
                         );
                     }
 

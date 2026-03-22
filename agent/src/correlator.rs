@@ -26,7 +26,6 @@ pub struct CorrelationAlert {
     pub pid: u32,
     pub rule: &'static str,
     pub detail: String, // same as in the BufferedEvent struct
-    pub  severity: u32, // this is the severity score the caller will decide what to do with it
 }
 
 // this will be our main correlator strucr
@@ -135,7 +134,6 @@ impl Correlator { // implementing some methids for the correlator struct
                     "process {} executed a shell AND made external connection within 30 seconds",
                     related_events.last().map(|e| e.comm.as_str()).unwrap_or("unknown")
                 ),
-                severity: 90, // if this happens there is a high chance it is malicious
             });
         }
 
@@ -160,7 +158,6 @@ impl Correlator { // implementing some methids for the correlator struct
                 detail: format!(
                     "process read sensitive file then executed a new process"
                 ),
-                severity: 75,
             });
         }
 
@@ -200,7 +197,6 @@ impl Correlator { // implementing some methids for the correlator struct
                         "{} processes spawned within 10 seconds",
                         exec_count
                     ),
-                    severity: 60,
                 });
             }
         }
