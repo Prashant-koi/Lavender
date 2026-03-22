@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-
+use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Severity {
@@ -92,5 +90,17 @@ impl Scorer {
         } else {
             None
         }
+    }
+
+    pub fn remove(&mut self, pid: u32) { // clean up the score when a process exits
+        self.scores.remove(&pid);
+    }
+
+    pub fn get_score(&self, pid: u32) -> u32 {
+        self.scores.get(&pid).map(|e| e.score).unwrap_or(0)
+    }
+
+    fn now_secs(&self) -> u64 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
     }
 }
