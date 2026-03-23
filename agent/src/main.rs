@@ -11,6 +11,7 @@ use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
 use correlator::{Correlator, BufferedEvent, EventKind};
+use response::{ResponseEngine, ResponseAction, SkipReason};
 use scorer::Scorer;
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
@@ -86,6 +87,35 @@ fn add_score_and_print_alert(
     }
 }
 
+fn response_to_alert(
+    response_engine: &ResponseEngine,
+    pid: u32,
+    comm: &str,
+    score: u32,
+) {
+    match response_engine.evaluate(pid, comm, score) {
+        ResponseAction::Kill { pid, comm, score } => {
+            output::print_kill(pid, &comm, score, false);
+        }
+        ResponseAction::Skipped { pid, comm, reason } => {
+            match reason {
+                SkipReason::DryRun => {
+                    output::print_kill(pid, &comm, score, true);
+                }
+                SkipReason::Protected => {
+                    eprintln!("[response] skipped kill of protected process '{}' (pid {})", comm, pid);
+                }
+                SkipReason::BelowThreshold => {
+                    // silent — below threshold is normal, don't spam
+                }
+                SkipReason::KillFailed => {
+                    eprintln!("[response] failed to kill process '{}' (pid {})", comm, pid);
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // we will load the config first
@@ -158,6 +188,7 @@ async fn main() {
     let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
     let mut correlator = Correlator::from_filters(&config.filters);
     let mut scorer = Scorer::new();
+    let response_engine = ResponseEngine::from_config(&config.response);
 
 
     println!("Lavender is watching. Ctrl+C to stop");
@@ -218,6 +249,9 @@ async fn main() {
                             &alert.detail,
                             &ancestry,
                         );
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
 
                     //we will skip the ignored processes(those mentioned in the lavender.toml)
@@ -244,6 +278,9 @@ async fn main() {
                             &alert.detail,
                             &ancestry,
                         );
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
                 }
 
@@ -319,6 +356,10 @@ async fn main() {
                             &alert.detail,
                             &ancestry_for_event,
                         );
+
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
 
                     // do not print every file open that will flood the whole thing
@@ -338,6 +379,10 @@ async fn main() {
                             &alert.detail,
                             &ancestry_for_event,
                         );
+
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
                 }
 
@@ -396,6 +441,9 @@ async fn main() {
                             &alert.detail,
                             &ancestry_for_event,
                         );
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
 
                     output::print_conn(event, &comm, &user);
@@ -437,6 +485,10 @@ async fn main() {
                             &alert.detail,
                             &ancestry_for_event,
                         );
+
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
 
                     // Rule 2, there is a midium level of confidence in this case
@@ -455,6 +507,10 @@ async fn main() {
                             &alert.detail,
                             &ancestry_for_event,
                         );
+
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
                     }
 
                 }

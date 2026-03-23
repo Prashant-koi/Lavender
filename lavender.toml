@@ -86,7 +86,7 @@ protected_comms = [
     "systemd",
     "sshd",
     "sudo",
-    "init"
+    "init",
     "lavender",
     "agent",
     "kernel",

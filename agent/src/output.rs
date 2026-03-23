@@ -48,6 +48,17 @@ pub struct ScoredAlertOutput<'a> {
     pub timestamp: u64,
 }
 
+#[derive(Serialize)]
+pub struct ResponseOutput<'a> {
+    pub kind: &'static str,
+    pub pid: u32,
+    pub comm: &'a str,
+    pub action: &'a str,
+    pub dry_run: bool,
+    pub score: u32,
+    pub timestamp: u64,
+}
+
 //will print exec in json format
 pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, ancestry: &str) {
     let event = ExecOutput {
@@ -111,6 +122,28 @@ pub fn print_scored_alert(
         color,
         serde_json::to_string(&out).unwrap()
     );
+}
+
+pub fn print_kill (
+    pid: u32,
+    comm: &str,
+    score:    u32,
+    dry_run: bool,
+) {
+    let action = if dry_run {"would kill"} else {"Killed"};
+    let out = ResponseOutput {
+        kind: "response",
+        pid,
+        comm,
+        action,
+        dry_run,
+        score,
+        timestamp: now_secs(),
+    };
+
+    // print and we will use bright red for acutal kills and yellow for dry runs
+    let color = if dry_run { "\x1b[33m" } else { "\x1b[31m" }; //props to claude for color codes
+    eprintln!("{}{}\x1b[0m", color, serde_json::to_string(&out).unwrap());
 }
 
 //formatting of ip from the 4/16 byts of IPv4/IPv6
