@@ -33,9 +33,12 @@ pub struct Correlator {
     buffers: HashMap<u32, VecDeque<BufferedEvent>>,//pid to recent events mapping for a given pid
     max_events: usize, // the max events to keep per process
     max_age_secs: u64, // max age before an event is stale
-    shell_names: Vec<String>,
     sensitive_file_patterns: Vec<String>,
     noisy_comms: Vec<String>,
+}
+
+fn basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 impl Correlator { // implementing some methids for the correlator struct
@@ -44,7 +47,6 @@ impl Correlator { // implementing some methids for the correlator struct
             buffers: HashMap::new(),
             max_events: filters.correlator_max_events,
             max_age_secs: filters.correlator_max_age_secs,
-            shell_names: filters.shell_names.clone(),
             sensitive_file_patterns: filters.sensitive_files.clone(),
             noisy_comms: filters.noisy_comms.clone(),
         }
@@ -115,26 +117,35 @@ impl Correlator { // implementing some methids for the correlator struct
         let kinds: Vec<&EventKind> = related_events.iter().map(|e| &e.kind).collect();
 
         // Reverse shell behaviour rule
-        // this will check for the pattern when bash was spawned and it made a network connection
-        let has_shell_exec = related_events.iter().any(|e| 
-            e.kind == EventKind::Exec &&
-            self.shell_names.iter().any(|s| e.comm.contains(s.as_str()))
-        );
+        // strict order: execve(bash) -> connect(external) -> execve(sh)
+        // this is stronger than just checking shell + network happened sometime in the buffer
+        for i in 0..related_events.len() {
+            let first = &related_events[i];
+            if !Self::is_exec_target(first, "bash") {
+                continue;
+            }
 
-        let has_external_connect = related_events.iter().any(|e|
-            e.kind == EventKind::Connect &&
-            !e.detail.starts_with("127.")
-        );
+            for j in (i + 1)..related_events.len() {
+                let second = &related_events[j];
+                if !Self::is_external_connect(second) {
+                    continue;
+                }
 
-        if has_shell_exec && has_external_connect {
-            return Some(CorrelationAlert { 
-                pid,
-                rule: "CHAIN Reverse shell behaviour",
-                detail: format!(
-                    "process {} executed a shell AND made external connection within 30 seconds",
-                    related_events.last().map(|e| e.comm.as_str()).unwrap_or("unknown")
-                ),
-            });
+                for k in (j + 1)..related_events.len() {
+                    let third = &related_events[k];
+                    if !Self::is_exec_target(third, "sh") {
+                        continue;
+                    }
+
+                    return Some(CorrelationAlert {
+                        pid,
+                        rule: "CHAIN Reverse shell behaviour",
+                        detail: format!(
+                            "ordered reverse-shell chain matched: execve(bash) -> connect(external) -> execve(sh)"
+                        ),
+                    });
+                }
+            }
         }
 
         // rule chekcing for execution after file read
@@ -261,6 +272,23 @@ impl Correlator { // implementing some methids for the correlator struct
         prefixed.push_str(prefix);
         prefixed.push_str("=>");
         full.starts_with(&prefixed)
+    }
+
+    fn is_exec_target(event: &BufferedEvent, target_shell: &str) -> bool {
+        if event.kind != EventKind::Exec {
+            return false;
+        }
+
+        let target_base = basename(&event.detail);
+        target_base == target_shell
+    }
+
+    fn is_external_connect(event: &BufferedEvent) -> bool {
+        if event.kind != EventKind::Connect {
+            return false;
+        }
+
+        !event.detail.starts_with("127.") && event.detail != "::1"
     }
 
 
