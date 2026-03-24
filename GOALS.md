@@ -4,3 +4,4 @@ Some features I will implement later:
     Here we track connection timestamps per process and look for regularity
 - TLS fingerprinting - JA4 and JA4+
       We will use JA4 format for TLS fingerprinting
+- Add test suites 

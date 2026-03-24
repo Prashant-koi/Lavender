@@ -11,6 +11,11 @@ The project uses:
 - `sched_process_exit` tracepoint monitoring for process tree cleanup
 - `openat` tracepoint monitoring for sensitive file-read detection
 - `connect` tracepoint monitoring for outbound network connection events (IPv4 and IPv6)
+- Per-process short-term correlation buffer (`max_events`, `max_age_secs`)
+- Multi-step correlation rules (reverse-shell chain, cred-access then exec, rapid spawn)
+- Context-aware scoring (base rule + lineage bonus + rare parent-child bonus + sequence bonus)
+- Severity labels (`INFO`, `WARNING`, `HIGH`, `CRITICAL`) derived from total score
+- Active response engine with `dry_run`, `kill_threshold`, and protected-process guards
 - JSON event output stream on stdout and JSON alert stream on stderr
 - Runtime filtering from `lavender.toml`
 
@@ -87,14 +92,34 @@ Current keys:
 - `filters.safe_shell_launchers`: process names allowed to launch shells without alerting
 - `filters.ignored_comms`: process names to skip during detection
 - `filters.safe_file_readers`: process names allowed to read sensitive files without alerting
+- `filters.shell_names`: process names treated as shells in detections/correlation
+- `filters.sensitive_files`: sensitive path patterns for file-open checks
+- `filters.suspicious_ports`: destination ports treated as suspicious
+- `filters.noisy_comms`: noisy process names suppressed in correlation rules
+- `filters.correlator_max_events`: per-pid buffer size for correlation
+- `filters.correlator_max_age_secs`: staleness window for buffered events
+- `response.dry_run`: when true, print response intent without sending kill
+- `response.kill_threshold`: minimum total score required before response
+- `response.protected_comms`: comm patterns excluded from kill response
 
 Example:
 
 ```toml
 [filters]
-safe_shell_launchers = ["bash", "sh", "zsh", "fish", "code"]
+safe_shell_launchers = ["tmux", "alacritty", "kitty", "sshd", "sudo", "su", "login", "Hyprland", "code"]
 ignored_comms = ["cpuUsage.sh"]
-safe_file_readers = ["code", "vim", "nvim", "nano"]
+safe_file_readers = ["sshd", "sudo", "passwd", "shadow", "pam", "bash", "zsh", "sh", "code", "vim", "nvim", "nano"]
+shell_names = ["bash", "sh", "zsh", "fish", "dash"]
+sensitive_files = ["/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d", "/.ssh/id_rsa", "/.ssh/id_ed25519", "/.ssh/authorized_keys", "/.bash_history", "/.zsh_history", "/root/.ssh"]
+suspicious_ports = [4444, 1337, 9001, 9999, 6666, 31337, 5555]
+noisy_comms = ["code", "cpuUsage", "cargo", "rustc", "make"]
+correlator_max_events = 20
+correlator_max_age_secs = 30
+
+[response]
+dry_run = true
+kill_threshold = 200
+protected_comms = ["systemd", "sshd", "sudo", "init", "lavender", "agent", "kernel"]
 ```
 
 The agent reads `lavender.toml` from the current working directory.
@@ -146,9 +171,23 @@ Output JSON `type` values currently emitted:
 - `conn`
 - `alert`
 
+Response events are emitted as JSON on stderr with `kind: "response"`.
+
+Scored alerts also include optional score breakdown fields:
+- `base_score`
+- `lineage_bonus`
+- `rarity_bonus`
+- `sequence_bonus`
+
 Alert rules currently emitted:
 - `T1059 [Unexpected shell spawn]`
 - `T1003 [Sensitive file read]`
+- `T1071 [Connection to suspicious port]`
+- `T1059 [Shell making outbound connection]`
+- `T1071 [First time Network Caller]`
+- `CHAIN Reverse shell behaviour`
+- `CHAIN Credential access then execution`
+- `CHAIN Rapid process spawning`
 
 Current eBPF map/program names are defined in `lavender-ebpf/src/main.rs`.
 
