@@ -12,7 +12,7 @@ use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
 use correlator::{Correlator, BufferedEvent, EventKind};
 use response::{ResponseEngine, ResponseAction, SkipReason};
-use scorer::Scorer;
+use scorer::{Scorer, ScoreContext};
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
@@ -74,6 +74,17 @@ fn decode_c_string(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).to_string()
 }
+
+fn basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn parent_comm_for_pid(pid: u32, tree: &HashMap<u32, ProcessNode>) -> Option<String> {
+    let node = tree.get(&pid)?;
+    let parent = tree.get(&node.ppid)?;
+    Some(parent.comm.clone())
+}
+
 // making a function of this because we have been doing this alot
 fn add_score_and_print_alert(
     scorer: &mut Scorer,
@@ -81,9 +92,29 @@ fn add_score_and_print_alert(
     rule: &'static str,
     detail: &str,
     ancestry: &str,
+    parent_comm: Option<&str>,
+    child_comm: Option<&str>,
 ) {
-    if let Some((score, severity)) = scorer.add_score_for_rule(pid, rule) {
-        output::print_scored_alert(pid, rule, detail, ancestry, score, severity.label());
+    let score_ctx = ScoreContext {
+        ancestry,
+        parent_comm,
+        child_comm,
+        is_sequence_match: rule.starts_with("CHAIN "),
+    };
+
+    if let Some((score, severity, breakdown)) = scorer.add_score_for_rule_with_context(pid, rule, &score_ctx) {
+        output::print_scored_alert(
+            pid,
+            rule,
+            detail,
+            ancestry,
+            score,
+            severity.label(),
+            Some(breakdown.base),
+            Some(breakdown.lineage_bonus),
+            Some(breakdown.rarity_bonus),
+            Some(breakdown.sequence_bonus),
+        );
     }
 }
 
@@ -228,6 +259,8 @@ async fn main() {
                     );
 
                     let ancestry = build_ancestry_chain(event.pid, &process_tree);
+                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
+                    let exec_target = basename(&filename).to_string();
                     
                     // inser to the correlator and check
                     let correlation_alert = correlator.push(event.pid, BufferedEvent {
@@ -248,6 +281,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry,
+                            parent_comm.as_deref(),
+                            Some(&exec_target),
                         );
 
                         let score = scorer.get_score(alert.pid);
@@ -277,6 +312,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry,
+                            parent_comm.as_deref(),
+                            Some(&exec_target),
                         );
 
                         let score = scorer.get_score(alert.pid);
@@ -335,6 +372,7 @@ async fn main() {
                     } else {
                         ancestry
                     };
+                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
 
                     // check
                     let correlation_alert = correlator.push(event.pid, BufferedEvent {
@@ -355,6 +393,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
+                            parent_comm.as_deref(),
+                            Some(&comm),
                         );
 
 
@@ -378,6 +418,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
+                            parent_comm.as_deref(),
+                            Some(&comm),
                         );
 
 
@@ -420,6 +462,7 @@ async fn main() {
                     } else {
                         ancestry
                     };
+                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
 
                     //check the rules by pushing to correlator
                     let correlation_alert = correlator.push(event.pid, BufferedEvent {
@@ -440,6 +483,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
+                            parent_comm.as_deref(),
+                            Some(&comm),
                         );
 
                         let score = scorer.get_score(alert.pid);
@@ -463,9 +508,16 @@ async fn main() {
 
                         // We score this event even if it does not cross warning threshold,
                         // so later high-confidence rules can aggregate faster.
-                        let _ = scorer.add_score_for_rule(
+                        let first_net_ctx = ScoreContext {
+                            ancestry: &ancestry_for_event,
+                            parent_comm: parent_comm.as_deref(),
+                            child_comm: Some(&comm),
+                            is_sequence_match: false,
+                        };
+                        let _ = scorer.add_score_for_rule_with_context(
                             event.pid,
                             "T1071 [First time Network Caller]",
+                            &first_net_ctx,
                         );
                     }
 
@@ -484,6 +536,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
+                            parent_comm.as_deref(),
+                            Some(&comm),
                         );
 
 
@@ -506,6 +560,8 @@ async fn main() {
                             alert.rule,
                             &alert.detail,
                             &ancestry_for_event,
+                            parent_comm.as_deref(),
+                            Some(&comm),
                         );
 
 

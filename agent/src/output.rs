@@ -45,6 +45,14 @@ pub struct ScoredAlertOutput<'a> {
     pub ancestry: &'a str,
     pub score:    u32,
     pub severity: &'a str,   // "INFO", "WARNING", "HIGH", "CRITICAL"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_score: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lineage_bonus: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rarity_bonus: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_bonus: Option<u32>,
     pub timestamp: u64,
 }
 
@@ -98,6 +106,10 @@ pub fn print_scored_alert(
     ancestry: &str,
     score:    u32,
     severity: &str,
+    base_score: Option<u32>,
+    lineage_bonus: Option<u32>,
+    rarity_bonus: Option<u32>,
+    sequence_bonus: Option<u32>,
 ) {
     let out = ScoredAlertOutput {
         kind: "alert",
@@ -107,6 +119,10 @@ pub fn print_scored_alert(
         ancestry,
         score,
         severity,
+        base_score,
+        lineage_bonus,
+        rarity_bonus,
+        sequence_bonus,
         timestamp: now_secs(),
     };
 
