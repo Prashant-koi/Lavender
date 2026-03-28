@@ -11,6 +11,23 @@ fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+// patterns that usually show encoded/obfuscated execution or payload fetch-and-run behavior
+const OBFUSCATED_PATTERNS: &[&str] = &[
+    "base64",
+    "$(curl",
+    "$(wget",
+    "|bash",
+    "|sh",
+    "python -c",
+    "python3 -c",
+    "perl -e",
+    "ruby -e",
+    "/dev/tcp",
+    "eval",
+    "exec(",
+    "frombase64string",
+];
+
 pub fn check_suspicious_shell_spawn(
     launcher_comm: &str,
     target_filename: &str,
@@ -122,4 +139,39 @@ pub fn check_suspicious_port(
         ),
         ancestry: ancestry.to_string(),
     })
+}
+
+pub fn check_obfuscated_command(
+    comm: &str,
+    cmdline: &str,
+    event_pid: u32,
+    ancestry: &str,
+) -> Option<Alert> {
+    let is_interpreter = [
+        "bash", "sh", "zsh", "python", "python3",
+        "perl", "ruby", "node", "php",
+    ]
+    .iter()
+    .any(|s| comm.contains(s));
+
+    if !is_interpreter {
+        return None;
+    }
+
+    let matched = OBFUSCATED_PATTERNS
+        .iter()
+        .find(|pattern| cmdline.contains(**pattern));
+
+    match matched {
+        Some(pattern) => Some(Alert {
+            pid: event_pid,
+            rule: "T1027 [Obfuscated command execution]",
+            detail: format!(
+                "'{}' executed suspicious command pattern '{}': {}",
+                comm, pattern, cmdline
+            ),
+            ancestry: ancestry.to_string(),
+        }),
+        None => None,
+    }
 }

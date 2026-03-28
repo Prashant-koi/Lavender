@@ -243,6 +243,17 @@ async fn main() {
 
                     let filename = decode_c_string(&event.filename);
 
+                    let argv1 = decode_c_string(&event.argv1);
+                    let argv2 = decode_c_string(&event.argv2);
+
+                    let cmdline = if argv1.is_empty() {
+                        filename.clone()
+                    } else if argv2.is_empty() {
+                        format!("{} {}", filename, argv1)
+                    } else {
+                        format!("{} {} {}", filename, argv1, argv2)
+                    };
+
                     let ppid = resolve_ppid(event.pid, event.ppid);
 
                     let user = user_db.resolve(event.uid);
@@ -294,7 +305,7 @@ async fn main() {
                         continue;
                     }
                 
-                    output::print_exec(event.pid, ppid, &user, &comm, &filename, &ancestry);
+                    output::print_exec(event.pid, ppid, &user, &comm, &filename, &cmdline, &ancestry);
 
 
                     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
@@ -305,6 +316,27 @@ async fn main() {
                         &ancestry,
                         &config.filters.safe_shell_launchers,
                         &config.filters.shell_names,
+                    ) {
+                        add_score_and_print_alert(
+                            &mut scorer,
+                            alert.pid,
+                            alert.rule,
+                            &alert.detail,
+                            &ancestry,
+                            parent_comm.as_deref(),
+                            Some(&exec_target),
+                        );
+
+                        let score = scorer.get_score(alert.pid);
+                        response_to_alert(&response_engine, alert.pid, &comm, score);
+                    }
+
+                    // obfuscated one-liners and fetch-and-exec patterns are high-signal for abuse
+                    if let Some(alert) = detection::check_obfuscated_command(
+                        &comm,
+                        &cmdline,
+                        event.pid,
+                        &ancestry,
                     ) {
                         add_score_and_print_alert(
                             &mut scorer,

@@ -49,6 +49,8 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm = comm;
         (*data).ppid = 0; // will resolve this in userspace side don't even try doing that here please
+        (*data).argv1 = [0u8; 128];
+        (*data).argv2 = [0u8; 128];
 
         // args[0] = filename pointer 
         let filename_ptr = match ctx.read_at::<u64>(16) {
@@ -62,6 +64,47 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
         if bpf_probe_read_user_str_bytes(filename_ptr, &mut (*data).filename).is_err() {
             e.discard(0);
             return Ok(());
+        }
+
+        // args[1] = argv pointer (char **argv)
+        let argv_ptr = match ctx.read_at::<u64>(24) {
+            Ok(ptr) => ptr as *const *const u8,
+            Err(_) => {
+                e.submit(0);
+                return Ok(());
+            }
+        };
+
+        // argv[1]
+        let arg1_ptr_u64: u64 = match bpf_probe_read_user(argv_ptr.add(1) as *const u64) {
+            Ok(p) => p,
+            Err(_) => {
+                e.submit(0);
+                return Ok(());
+            }
+        };
+
+        if arg1_ptr_u64 != 0 {
+            let _ = bpf_probe_read_user_str_bytes(
+                arg1_ptr_u64 as *const u8,
+                &mut (*data).argv1,
+            );
+        }
+
+        // argv[2]
+        let arg2_ptr_u64: u64 = match bpf_probe_read_user(argv_ptr.add(2) as *const u64) {
+            Ok(p) => p,
+            Err(_) => {
+                e.submit(0);
+                return Ok(());
+            }
+        };
+
+        if arg2_ptr_u64 != 0 {
+            let _ = bpf_probe_read_user_str_bytes(
+                arg2_ptr_u64 as *const u8,
+                &mut (*data).argv2,
+            );
         }
     }
 

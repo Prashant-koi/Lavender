@@ -20,6 +20,7 @@ pub struct ExecOutput<'a> {
     pub user: &'a str,
     pub comm: &'a str,
     pub filename: &'a str,
+    pub cmdline: &'a str,
     pub ancestry: &'a str,
     pub timestamp: u64,
 }
@@ -68,7 +69,7 @@ pub struct ResponseOutput<'a> {
 }
 
 //will print exec in json format
-pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, ancestry: &str) {
+pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, cmdline: &str, ancestry: &str) {
     let event = ExecOutput {
         kind: "exec",
         pid,
@@ -76,6 +77,7 @@ pub fn print_exec(pid: u32, ppid: u32, user: &str, comm: &str, filename: &str, a
         user,
         comm,
         filename,
+        cmdline,
         ancestry,
         timestamp: now_secs(),
     };

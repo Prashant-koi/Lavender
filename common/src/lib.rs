@@ -7,6 +7,8 @@ pub struct ExecEvent {
     pub uid: u32,
     pub comm: [u8; 16],    // process name, the kernel limits this to 16 bytes (TASK_COMM_LEN)
     pub filename: [u8; 256],
+    pub argv1: [u8; 128], // first captured arg after executable path
+    pub argv2: [u8; 128], // second captured arg after executable path
 }
 
 #[repr(C)]
