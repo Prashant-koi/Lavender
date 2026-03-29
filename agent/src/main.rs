@@ -1,151 +1,19 @@
-pub mod detection;
-pub mod output;
-pub mod config;
-pub mod users;
-pub mod correlator;
-pub mod scorer;
-pub mod response;
-
 use aya::{Bpf, include_bytes_aligned};
 use aya::programs::TracePoint;
 use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
-use correlator::{Correlator, BufferedEvent, EventKind};
-use response::{ResponseEngine, ResponseAction, SkipReason};
-use scorer::{Scorer, ScoreContext};
+use agent::config;
+use agent::conn_handler;
+use agent::correlator::Correlator;
+use agent::exec_handler;
+use agent::exit_handler;
+use agent::open_handler;
+use agent::response::ResponseEngine;
+use agent::runtime::ProcessNode;
+use agent::scorer::Scorer;
+use agent::users;
 use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
-
-#[derive(Clone, Debug)]
-pub struct ProcessNode {
-    pid: u32,
-    ppid: u32,
-    comm: String,
-    filename: String,
-}
-
-fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
-    let mut chain = vec![];
-    let mut current_pid = pid;
-
-        //we will walk upward through parents and go max of 8 levels
-    // max limit to stop inf loops in case the data is weird
-    for _ in 0..8 {
-        match tree.get(&current_pid) {
-            Some(node) => {
-                chain.push(node.comm.clone());
-                if node.ppid == 0 || node.ppid == current_pid {
-                    //either we reached init or a cycle
-                    break;
-                }
-                current_pid = node.ppid;
-            }
-            None => break,
-        }
-    }
-
-    // reverse the chian since we built it button up
-    chain.reverse();
-    chain.join("=>")
-}
-
-// ppid resolve function
-fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
-    if kernel_ppid != 0 {
-        return kernel_ppid;
-    }
-
-    let status_path = format!("/proc/{}/status", pid);
-    let contents = match std::fs::read_to_string(status_path) {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
-
-    for line in contents.lines() {
-        if let Some(rest) = line.strip_prefix("PPid:") {
-            return rest.trim().parse::<u32>().unwrap_or(0);
-        }
-    }
-
-    0
-}
-
-fn decode_c_string(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).to_string()
-}
-
-fn basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-
-fn parent_comm_for_pid(pid: u32, tree: &HashMap<u32, ProcessNode>) -> Option<String> {
-    let node = tree.get(&pid)?;
-    let parent = tree.get(&node.ppid)?;
-    Some(parent.comm.clone())
-}
-
-// making a function of this because we have been doing this alot
-fn add_score_and_print_alert(
-    scorer: &mut Scorer,
-    pid: u32,
-    rule: &'static str,
-    detail: &str,
-    ancestry: &str,
-    parent_comm: Option<&str>,
-    child_comm: Option<&str>,
-) {
-    let score_ctx = ScoreContext {
-        ancestry,
-        parent_comm,
-        child_comm,
-        is_sequence_match: rule.starts_with("CHAIN "),
-    };
-
-    if let Some((score, severity, breakdown)) = scorer.add_score_for_rule_with_context(pid, rule, &score_ctx) {
-        output::print_scored_alert(
-            pid,
-            rule,
-            detail,
-            ancestry,
-            score,
-            severity.label(),
-            Some(breakdown.base),
-            Some(breakdown.lineage_bonus),
-            Some(breakdown.rarity_bonus),
-            Some(breakdown.sequence_bonus),
-        );
-    }
-}
-
-fn response_to_alert(
-    response_engine: &ResponseEngine,
-    pid: u32,
-    comm: &str,
-    score: u32,
-) {
-    match response_engine.evaluate(pid, comm, score) {
-        ResponseAction::Kill { pid, comm, score } => {
-            output::print_kill(pid, &comm, score, false);
-        }
-        ResponseAction::Skipped { pid, comm, reason } => {
-            match reason {
-                SkipReason::DryRun => {
-                    output::print_kill(pid, &comm, score, true);
-                }
-                SkipReason::Protected => {
-                    eprintln!("[response] skipped kill of protected process '{}' (pid {})", comm, pid);
-                }
-                SkipReason::BelowThreshold => {
-                    // silent — below threshold is normal, don't spam
-                }
-                SkipReason::KillFailed => {
-                    eprintln!("[response] failed to kill process '{}' (pid {})", comm, pid);
-                }
-            }
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() {
@@ -237,120 +105,15 @@ async fn main() {
                     // We just convert those bytes
                     let event = unsafe { &*(item.as_ptr() as *const ExecEvent) };
 
-                    // eBPF sends fixed-size null-terminated byte arrays.
-                    // Convert to UTF-8 strings and strip trailing null bytes.
-                    let comm = decode_c_string(&event.comm);
-
-                    let filename = decode_c_string(&event.filename);
-
-                    let argv1 = decode_c_string(&event.argv1);
-                    let argv2 = decode_c_string(&event.argv2);
-
-                    let cmdline = if argv1.is_empty() {
-                        filename.clone()
-                    } else if argv2.is_empty() {
-                        format!("{} {}", filename, argv1)
-                    } else {
-                        format!("{} {} {}", filename, argv1, argv2)
-                    };
-
-                    let ppid = resolve_ppid(event.pid, event.ppid);
-
-                    let user = user_db.resolve(event.uid);
-
-                    // we will keep latest process metadata so we can reconstruct lineage
-                    process_tree.insert(
-                        event.pid,
-                        ProcessNode {
-                            pid: event.pid,
-                            ppid,
-                            comm: comm.to_string(),
-                            filename: filename.to_string(),
-                        },
+                    exec_handler::handle_event(
+                        event,
+                        &mut process_tree,
+                        &user_db,
+                        &config,
+                        &mut correlator,
+                        &mut scorer,
+                        &response_engine,
                     );
-
-                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
-                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
-                    let exec_target = basename(&filename).to_string();
-                    
-                    // inser to the correlator and check
-                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
-                        kind:      EventKind::Exec,
-                        comm:      comm.clone(),
-                        detail:    filename.clone(),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        ancestry:  ancestry.clone(),
-                    });
-
-                    if let Some(alert) = correlation_alert {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry,
-                            parent_comm.as_deref(),
-                            Some(&exec_target),
-                        );
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
-
-                    //we will skip the ignored processes(those mentioned in the lavender.toml)
-                    if config.filters.ignored_comms.iter().any(|s| comm.contains(s.as_str())) {
-                        continue;
-                    }
-                
-                    output::print_exec(event.pid, ppid, &user, &comm, &filename, &cmdline, &ancestry);
-
-
-                    //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
-                    if let Some(alert) = detection::check_suspicious_shell_spawn(
-                        &comm,
-                        &filename,
-                        event.pid,
-                        &ancestry,
-                        &config.filters.safe_shell_launchers,
-                        &config.filters.shell_names,
-                    ) {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry,
-                            parent_comm.as_deref(),
-                            Some(&exec_target),
-                        );
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
-
-                    // obfuscated one-liners and fetch-and-exec patterns are high-signal for abuse
-                    if let Some(alert) = detection::check_obfuscated_command(
-                        &comm,
-                        &cmdline,
-                        event.pid,
-                        &ancestry,
-                    ) {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry,
-                            parent_comm.as_deref(),
-                            Some(&exec_target),
-                        );
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
                 }
 
                 // Tell AsyncFd we handled this readiness notification.
@@ -365,19 +128,8 @@ async fn main() {
                 while let Some(item) = rb.next() {
                     // we will read it as u32 directly
                     let pid = unsafe { *(item.as_ptr() as *const u32)};
-                    
-                    //remove from tree
-                    if process_tree.remove(&pid).is_some() {
-                        // uncomment while testing, NOTE TO SELF
-                        // println!("[exit     {:>6}] removed from tree", pid)
-                    }
 
-                    correlator.remove(pid); //remove from correlator map
-
-                    scorer.remove(pid); 
-
-                    // temporary debug line 
-                    // println!("[tree size: {}]", process_tree.len());
+                    exit_handler::handle_event(pid, &mut process_tree, &mut correlator, &mut scorer);
                 };
 
 
@@ -394,70 +146,14 @@ async fn main() {
                         &*(item.as_ptr() as *const OpenEvent)
                     };
 
-                    let comm = decode_c_string(&event.comm);
-
-                    let filename = decode_c_string(&event.filename);
-
-                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
-                    let ancestry_for_event = if ancestry.is_empty() {
-                        "unknown".to_string()
-                    } else {
-                        ancestry
-                    };
-                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
-
-                    // check
-                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
-                        kind:      EventKind::FileOpen,
-                        comm:      comm.clone(),
-                        detail:    filename.clone(),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        ancestry:  ancestry_for_event.clone(),
-                    });
-
-                    if let Some(alert) = correlation_alert {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry_for_event,
-                            parent_comm.as_deref(),
-                            Some(&comm),
-                        );
-
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
-
-                    // do not print every file open that will flood the whole thing
-                    // so only run the detection and print if fires
-                    if let Some(alert) = detection::check_sensitive_file_read(
-                        &comm,
-                        &filename,
-                        event.pid,
-                        &ancestry_for_event,
-                        &config.filters.safe_file_readers,
-                        &config.filters.sensitive_files,
-                    ) {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry_for_event,
-                            parent_comm.as_deref(),
-                            Some(&comm),
-                        );
-
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
+                    open_handler::handle_event(
+                        event,
+                        &process_tree,
+                        &config,
+                        &mut correlator,
+                        &mut scorer,
+                        &response_engine,
+                    );
                 }
 
                 guard.clear_ready();
@@ -473,133 +169,16 @@ async fn main() {
                         &*(item.as_ptr() as *const ConnEvent)
                     };
 
-                    let comm = decode_c_string(&event.comm);
-
-                    //we will skip port 0 as they are internal socket operations
-                    if event.dport == 0 {
-                        continue;
-                    }
-
-                    //if localhost also skip
-                    if event.af == 2 && event.daddr[0] == 127 {
-                        continue;
-                    }
-
-                    let user = user_db.resolve(event.uid);
-                    let dest_ip = output::format_ip(event);
-
-                    let ancestry = build_ancestry_chain(event.pid, &process_tree);
-                    let ancestry_for_event = if ancestry.is_empty() {
-                        "unknown".to_string()
-                    } else {
-                        ancestry
-                    };
-                    let parent_comm = parent_comm_for_pid(event.pid, &process_tree);
-
-                    //check the rules by pushing to correlator
-                    let correlation_alert = correlator.push(event.pid, BufferedEvent {
-                        kind:      EventKind::Connect,
-                        comm:      comm.clone(),
-                        detail:    dest_ip.clone(),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        ancestry:  ancestry_for_event.clone(),
-                    });
-
-                    if let Some(alert) = correlation_alert {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry_for_event,
-                            parent_comm.as_deref(),
-                            Some(&comm),
-                        );
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
-
-                    output::print_conn(event, &comm, &user);
-
-                    //check if the connection is has been made for the first time
-                    if !seen_network_callers.contains(&comm) {
-                        seen_network_callers.insert(comm.clone());
-                        let first_net_detail = format!(
-                            "'{}' made its first observed outbound connection to {}:{}",
-                            comm, dest_ip, event.dport
-                        );
-                        //print this if it is the first time command has made an network connection
-                        output::print_alert(event.pid, 
-                            "T1071 [First time Network Caller]",
-                            &first_net_detail,
-                            &ancestry_for_event);
-
-                        // We score this event even if it does not cross warning threshold,
-                        // so later high-confidence rules can aggregate faster.
-                        let first_net_ctx = ScoreContext {
-                            ancestry: &ancestry_for_event,
-                            parent_comm: parent_comm.as_deref(),
-                            child_comm: Some(&comm),
-                            is_sequence_match: false,
-                        };
-                        let _ = scorer.add_score_for_rule_with_context(
-                            event.pid,
-                            "T1071 [First time Network Caller]",
-                            &first_net_ctx,
-                        );
-                    }
-
-                    // Rule 1, there is high confidence of suspicious network connection
-                    if let Some(alert) = detection::check_shell_network_connection(
-                        &comm,
-                        &dest_ip,
-                        event.dport,
-                        event.pid,
-                        &ancestry_for_event,
-                        &config.filters.shell_names,
-                    ) {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry_for_event,
-                            parent_comm.as_deref(),
-                            Some(&comm),
-                        );
-
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
-
-                    // Rule 2, there is a midium level of confidence in this case
-                    if let Some(alert) = detection::check_suspicious_port(
-                        &comm,
-                        &dest_ip,
-                        event.dport,
-                        event.pid,
-                        &ancestry_for_event,
-                        &config.filters.suspicious_ports,
-                    ) {
-                        add_score_and_print_alert(
-                            &mut scorer,
-                            alert.pid,
-                            alert.rule,
-                            &alert.detail,
-                            &ancestry_for_event,
-                            parent_comm.as_deref(),
-                            Some(&comm),
-                        );
-
-
-                        let score = scorer.get_score(alert.pid);
-                        response_to_alert(&response_engine, alert.pid, &comm, score);
-                    }
+                    conn_handler::handle_event(
+                        event,
+                        &process_tree,
+                        &mut seen_network_callers,
+                        &user_db,
+                        &config,
+                        &mut correlator,
+                        &mut scorer,
+                        &response_engine,
+                    );
 
                 }
 
