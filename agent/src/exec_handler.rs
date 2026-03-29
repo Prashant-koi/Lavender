@@ -94,7 +94,7 @@ pub fn handle_event(
 
     //checking if the spawned process has a suspicious parent or is supicious refer detection.rs
     if let Some(alert) = detection::check_suspicious_shell_spawn(
-        &comm,
+        parent_comm.as_deref().unwrap_or(""),
         &filename,
         event.pid,
         &ancestry,

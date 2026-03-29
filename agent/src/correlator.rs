@@ -67,7 +67,8 @@ impl Correlator { // implementing some methids for the correlator struct
             //we will evict events that are too old by checking with max_age_secs 
             // and we will check from the front since VecDeque is oldest-first
             while let Some(front) = buf.front() {
-                if now - front.timestamp > self.max_age_secs {
+                let age = now.saturating_sub(front.timestamp);
+                if age > self.max_age_secs {
                     buf.pop_front();
                 } else {
                     break;
