@@ -1,28 +1,21 @@
-use std::collections::{HashMap, HashSet};
-
 use common::ConnEvent;
 
 use crate::config::Config;
-use crate::correlator::{BufferedEvent, Correlator, EventKind};
+use crate::correlator::{BufferedEvent, EventKind};
 use crate::detection;
 use crate::output;
-use crate::response::ResponseEngine;
 use crate::runtime::{
     add_score_and_print_alert, ancestry_or_unknown, build_ancestry_chain, decode_c_string,
-    parent_comm_for_pid, response_to_alert, ProcessNode,
+    parent_comm_for_pid, response_to_alert, RuntimeState,
 };
-use crate::scorer::{ScoreContext, Scorer};
+use crate::scorer::ScoreContext;
 use crate::users::UserDb;
 
 pub fn handle_event(
     event: &ConnEvent,
-    process_tree: &HashMap<u32, ProcessNode>,
-    seen_network_callers: &mut HashSet<String>,
+    state: &mut RuntimeState,
     user_db: &UserDb,
     config: &Config,
-    correlator: &mut Correlator,
-    scorer: &mut Scorer,
-    response_engine: &ResponseEngine,
 ) {
     let comm = decode_c_string(&event.comm);
 
@@ -39,12 +32,12 @@ pub fn handle_event(
     let user = user_db.resolve(event.uid);
     let dest_ip = output::format_ip(event);
 
-    let ancestry = build_ancestry_chain(event.pid, process_tree);
+    let ancestry = build_ancestry_chain(event.pid, &state.process_tree);
     let ancestry_for_event = ancestry_or_unknown(ancestry);
-    let parent_comm = parent_comm_for_pid(event.pid, process_tree);
+    let parent_comm = parent_comm_for_pid(event.pid, &state.process_tree);
 
     //check the rules by pushing to correlator
-    let correlation_alert = correlator.push(
+    let correlation_alert = state.correlator.push(
         event.pid,
         BufferedEvent {
             kind: EventKind::Connect,
@@ -60,7 +53,7 @@ pub fn handle_event(
 
     if let Some(alert) = correlation_alert {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -69,15 +62,15 @@ pub fn handle_event(
             Some(&comm),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 
     output::print_conn(event, &comm, &user);
 
     //check if the connection is has been made for the first time
-    if !seen_network_callers.contains(&comm) {
-        seen_network_callers.insert(comm.clone());
+    if !state.seen_network_callers.contains(&comm) {
+        state.seen_network_callers.insert(comm.clone());
         let first_net_detail = format!(
             "'{}' made its first observed outbound connection to {}:{}",
             comm, dest_ip, event.dport
@@ -98,7 +91,7 @@ pub fn handle_event(
             child_comm: Some(&comm),
             is_sequence_match: false,
         };
-        let _ = scorer.add_score_for_rule_with_context(
+        let _ = state.scorer.add_score_for_rule_with_context(
             event.pid,
             "T1071 [First time Network Caller]",
             &first_net_ctx,
@@ -115,7 +108,7 @@ pub fn handle_event(
         &config.filters.shell_names,
     ) {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -124,8 +117,8 @@ pub fn handle_event(
             Some(&comm),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 
     // Rule 2, there is a midium level of confidence in this case
@@ -138,7 +131,7 @@ pub fn handle_event(
         &config.filters.suspicious_ports,
     ) {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -147,7 +140,7 @@ pub fn handle_event(
             Some(&comm),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 }

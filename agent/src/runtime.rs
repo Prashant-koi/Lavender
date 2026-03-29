@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::config::Config;
+use crate::correlator::Correlator;
 use crate::output;
 use crate::response::{ResponseAction, ResponseEngine, SkipReason};
 use crate::scorer::{ScoreContext, Scorer};
@@ -10,6 +12,26 @@ pub struct ProcessNode {
     pub ppid: u32,
     pub comm: String,
     pub filename: String,
+}
+
+pub struct RuntimeState {
+    pub process_tree: HashMap<u32, ProcessNode>,
+    pub correlator: Correlator,
+    pub scorer: Scorer,
+    pub response_engine: ResponseEngine,
+    pub seen_network_callers: HashSet<String>,
+}
+
+impl RuntimeState {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            process_tree: HashMap::new(),
+            correlator: Correlator::from_filters(&config.filters),
+            scorer: Scorer::new(),
+            response_engine: ResponseEngine::from_config(&config.response),
+            seen_network_callers: HashSet::new(),
+        }
+    }
 }
 
 pub fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {

@@ -1,27 +1,20 @@
-use std::collections::HashMap;
-
 use common::ExecEvent;
 
 use crate::config::Config;
-use crate::correlator::{BufferedEvent, Correlator, EventKind};
+use crate::correlator::{BufferedEvent, EventKind};
 use crate::detection;
 use crate::output;
-use crate::response::ResponseEngine;
 use crate::runtime::{
     add_score_and_print_alert, basename, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
-    resolve_ppid, response_to_alert, ProcessNode,
+    resolve_ppid, response_to_alert, RuntimeState,
 };
-use crate::scorer::Scorer;
 use crate::users::UserDb;
 
 pub fn handle_event(
     event: &ExecEvent,
-    process_tree: &mut HashMap<u32, ProcessNode>,
+    state: &mut RuntimeState,
     user_db: &UserDb,
     config: &Config,
-    correlator: &mut Correlator,
-    scorer: &mut Scorer,
-    response_engine: &ResponseEngine,
 ) {
     // eBPF sends fixed-size null-terminated byte arrays.
     // Convert to UTF-8 strings and strip trailing null bytes.
@@ -43,9 +36,9 @@ pub fn handle_event(
     let user = user_db.resolve(event.uid);
 
     // we will keep latest process metadata so we can reconstruct lineage
-    process_tree.insert(
+    state.process_tree.insert(
         event.pid,
-        ProcessNode {
+        crate::runtime::ProcessNode {
             pid: event.pid,
             ppid,
             comm: comm.to_string(),
@@ -53,12 +46,12 @@ pub fn handle_event(
         },
     );
 
-    let ancestry = build_ancestry_chain(event.pid, process_tree);
-    let parent_comm = parent_comm_for_pid(event.pid, process_tree);
+    let ancestry = build_ancestry_chain(event.pid, &state.process_tree);
+    let parent_comm = parent_comm_for_pid(event.pid, &state.process_tree);
     let exec_target = basename(&filename).to_string();
 
     // inser to the correlator and check
-    let correlation_alert = correlator.push(
+    let correlation_alert = state.correlator.push(
         event.pid,
         BufferedEvent {
             kind: EventKind::Exec,
@@ -74,7 +67,7 @@ pub fn handle_event(
 
     if let Some(alert) = correlation_alert {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -83,8 +76,8 @@ pub fn handle_event(
             Some(&exec_target),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 
     //we will skip the ignored processes(those mentioned in the lavender.toml)
@@ -109,7 +102,7 @@ pub fn handle_event(
         &config.filters.shell_names,
     ) {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -118,14 +111,14 @@ pub fn handle_event(
             Some(&exec_target),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 
     // obfuscated one-liners and fetch-and-exec patterns are high-signal for abuse
     if let Some(alert) = detection::check_obfuscated_command(&comm, &cmdline, event.pid, &ancestry) {
         add_score_and_print_alert(
-            scorer,
+            &mut state.scorer,
             alert.pid,
             alert.rule,
             &alert.detail,
@@ -134,7 +127,7 @@ pub fn handle_event(
             Some(&exec_target),
         );
 
-        let score = scorer.get_score(alert.pid);
-        response_to_alert(response_engine, alert.pid, &comm, score);
+        let score = state.scorer.get_score(alert.pid);
+        response_to_alert(&state.response_engine, alert.pid, &comm, score);
     }
 }

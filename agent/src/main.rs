@@ -4,15 +4,11 @@ use aya::maps::RingBuf;
 use common::{ExecEvent, OpenEvent, ConnEvent};
 use agent::config;
 use agent::conn_handler;
-use agent::correlator::Correlator;
 use agent::exec_handler;
 use agent::exit_handler;
 use agent::open_handler;
-use agent::response::ResponseEngine;
-use agent::runtime::ProcessNode;
-use agent::scorer::Scorer;
+use agent::runtime::RuntimeState;
 use agent::users;
-use std::collections::{HashMap, HashSet};
 use tokio::io::unix::AsyncFd;
 
 #[tokio::main]
@@ -83,11 +79,7 @@ async fn main() {
     let conn_ring = RingBuf::try_from(bpf.take_map("CONN_EVENTS").unwrap()).unwrap();
     let mut conn_fd = AsyncFd::new(conn_ring).unwrap();
 
-    let mut process_tree: HashMap<u32, ProcessNode> = HashMap::new();
-    let mut seen_network_callers: HashSet<String> = HashSet::new(); // a hashset to just store seen network callers for check
-    let mut correlator = Correlator::from_filters(&config.filters);
-    let mut scorer = Scorer::new();
-    let response_engine = ResponseEngine::from_config(&config.response);
+    let mut state = RuntimeState::new(&config);
 
 
     println!("Lavender is watching. Ctrl+C to stop");
@@ -107,12 +99,9 @@ async fn main() {
 
                     exec_handler::handle_event(
                         event,
-                        &mut process_tree,
+                        &mut state,
                         &user_db,
                         &config,
-                        &mut correlator,
-                        &mut scorer,
-                        &response_engine,
                     );
                 }
 
@@ -129,7 +118,7 @@ async fn main() {
                     // we will read it as u32 directly
                     let pid = unsafe { *(item.as_ptr() as *const u32)};
 
-                    exit_handler::handle_event(pid, &mut process_tree, &mut correlator, &mut scorer);
+                    exit_handler::handle_event(pid, &mut state);
                 };
 
 
@@ -148,11 +137,8 @@ async fn main() {
 
                     open_handler::handle_event(
                         event,
-                        &process_tree,
+                        &mut state,
                         &config,
-                        &mut correlator,
-                        &mut scorer,
-                        &response_engine,
                     );
                 }
 
@@ -171,13 +157,9 @@ async fn main() {
 
                     conn_handler::handle_event(
                         event,
-                        &process_tree,
-                        &mut seen_network_callers,
+                        &mut state,
                         &user_db,
                         &config,
-                        &mut correlator,
-                        &mut scorer,
-                        &response_engine,
                     );
 
                 }
