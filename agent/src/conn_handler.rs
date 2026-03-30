@@ -1,14 +1,14 @@
 use common::ConnEvent;
 
 use crate::config::Config;
-use crate::correlator::{BufferedEvent, EventKind};
+use crate::correlator::BufferedEvent;
 use crate::detection;
 use crate::output;
 use crate::runtime::{
-    add_score_and_print_alert, ancestry_or_unknown, build_ancestry_chain, decode_c_string,
-    parent_comm_for_pid, response_to_alert, RuntimeState,
+    AlertContext,
+    ancestry_or_unknown, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
+    maybe_respond, push_correlator_and_process_alert, record_alert, RuntimeState,
 };
-use crate::scorer::ScoreContext;
 use crate::users::UserDb;
 
 pub fn handle_event(
@@ -35,36 +35,20 @@ pub fn handle_event(
     let ancestry = build_ancestry_chain(event.pid, &state.process_tree);
     let ancestry_for_event = ancestry_or_unknown(ancestry);
     let parent_comm = parent_comm_for_pid(event.pid, &state.process_tree);
-
-    //check the rules by pushing to correlator
-    let correlation_alert = state.correlator.push(
+    let alert_context = AlertContext::new(
         event.pid,
-        BufferedEvent {
-            kind: EventKind::Connect,
-            comm: comm.clone(),
-            detail: dest_ip.clone(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            ancestry: ancestry_for_event.clone(),
-        },
+        &ancestry_for_event,
+        parent_comm.as_deref(),
+        Some(&comm),
+        &comm,
     );
 
-    if let Some(alert) = correlation_alert {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
-            alert.rule,
-            &alert.detail,
-            &ancestry_for_event,
-            parent_comm.as_deref(),
-            Some(&comm),
-        );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
-    }
+    // push to correlator and run the shared alert pipeline for chain alerts
+    push_correlator_and_process_alert(
+        state,
+        &alert_context,
+        BufferedEvent::connect(comm.clone(), dest_ip.clone(), ancestry_for_event.clone()),
+    );
 
     output::print_conn(event, &comm, &user);
 
@@ -75,27 +59,13 @@ pub fn handle_event(
             "'{}' made its first observed outbound connection to {}:{}",
             comm, dest_ip, event.dport
         );
-        //print this if it is the first time command has made an network connection
-        output::print_alert(
-            event.pid,
+        record_alert(
+            state,
+            &alert_context,
             "T1071 [First time Network Caller]",
             &first_net_detail,
-            &ancestry_for_event,
         );
-
-        // We score this event even if it does not cross warning threshold,
-        // so later high-confidence rules can aggregate faster.
-        let first_net_ctx = ScoreContext {
-            ancestry: &ancestry_for_event,
-            parent_comm: parent_comm.as_deref(),
-            child_comm: Some(&comm),
-            is_sequence_match: false,
-        };
-        let _ = state.scorer.add_score_for_rule_with_context(
-            event.pid,
-            "T1071 [First time Network Caller]",
-            &first_net_ctx,
-        );
+        maybe_respond(state, &alert_context);
     }
 
     // Rule 1, there is high confidence of suspicious network connection
@@ -107,18 +77,13 @@ pub fn handle_event(
         &ancestry_for_event,
         &config.filters.shell_names,
     ) {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
+        record_alert(
+            state,
+            &alert_context,
             alert.rule,
             &alert.detail,
-            &ancestry_for_event,
-            parent_comm.as_deref(),
-            Some(&comm),
         );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
+        maybe_respond(state, &alert_context);
     }
 
     // Rule 2, there is a midium level of confidence in this case
@@ -130,17 +95,12 @@ pub fn handle_event(
         &ancestry_for_event,
         &config.filters.suspicious_ports,
     ) {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
+        record_alert(
+            state,
+            &alert_context,
             alert.rule,
             &alert.detail,
-            &ancestry_for_event,
-            parent_comm.as_deref(),
-            Some(&comm),
         );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
+        maybe_respond(state, &alert_context);
     }
 }

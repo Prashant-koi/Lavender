@@ -20,6 +20,42 @@ pub struct BufferedEvent {
     pub ancestry: String,
 }
 
+impl BufferedEvent {
+    fn now_secs() -> u64 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    pub fn exec(comm: String, filename: String, ancestry: String) -> Self {
+        Self {
+            kind: EventKind::Exec,
+            comm,
+            detail: filename,
+            timestamp: Self::now_secs(),
+            ancestry,
+        }
+    }
+
+    pub fn connect(comm: String, dest_ip: String, ancestry: String) -> Self {
+        Self {
+            kind: EventKind::Connect,
+            comm,
+            detail: dest_ip,
+            timestamp: Self::now_secs(),
+            ancestry,
+        }
+    }
+
+    pub fn file_open(comm: String, filename: String, ancestry: String) -> Self {
+        Self {
+            kind: EventKind::FileOpen,
+            comm,
+            detail: filename,
+            timestamp: Self::now_secs(),
+            ancestry,
+        }
+    }
+}
+
 
 // use this when an alert is produced by correlation
 pub struct CorrelationAlert {

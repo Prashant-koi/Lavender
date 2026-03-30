@@ -1,12 +1,13 @@
 use common::ExecEvent;
 
 use crate::config::Config;
-use crate::correlator::{BufferedEvent, EventKind};
+use crate::correlator::BufferedEvent;
 use crate::detection;
 use crate::output;
 use crate::runtime::{
-    add_score_and_print_alert, basename, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
-    resolve_ppid, response_to_alert, RuntimeState,
+    AlertContext,
+    basename, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
+    maybe_respond, push_correlator_and_process_alert, record_alert, resolve_ppid, RuntimeState,
 };
 use crate::users::UserDb;
 
@@ -49,36 +50,20 @@ pub fn handle_event(
     let ancestry = build_ancestry_chain(event.pid, &state.process_tree);
     let parent_comm = parent_comm_for_pid(event.pid, &state.process_tree);
     let exec_target = basename(&filename).to_string();
-
-    // inser to the correlator and check
-    let correlation_alert = state.correlator.push(
+    let alert_context = AlertContext::new(
         event.pid,
-        BufferedEvent {
-            kind: EventKind::Exec,
-            comm: comm.clone(),
-            detail: filename.clone(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            ancestry: ancestry.clone(),
-        },
+        &ancestry,
+        parent_comm.as_deref(),
+        Some(&exec_target),
+        &comm,
     );
 
-    if let Some(alert) = correlation_alert {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
-            alert.rule,
-            &alert.detail,
-            &ancestry,
-            parent_comm.as_deref(),
-            Some(&exec_target),
-        );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
-    }
+    // insert into correlator and run the shared alert pipeline if it returns an alert
+    push_correlator_and_process_alert(
+        state,
+        &alert_context,
+        BufferedEvent::exec(comm.clone(), filename.clone(), ancestry.clone()),
+    );
 
     //we will skip the ignored processes(those mentioned in the lavender.toml)
     if config
@@ -101,33 +86,23 @@ pub fn handle_event(
         &config.filters.safe_shell_launchers,
         &config.filters.shell_names,
     ) {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
+        record_alert(
+            state,
+            &alert_context,
             alert.rule,
             &alert.detail,
-            &ancestry,
-            parent_comm.as_deref(),
-            Some(&exec_target),
         );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
+        maybe_respond(state, &alert_context);
     }
 
     // obfuscated one-liners and fetch-and-exec patterns are high-signal for abuse
     if let Some(alert) = detection::check_obfuscated_command(&comm, &cmdline, event.pid, &ancestry) {
-        add_score_and_print_alert(
-            &mut state.scorer,
-            alert.pid,
+        record_alert(
+            state,
+            &alert_context,
             alert.rule,
             &alert.detail,
-            &ancestry,
-            parent_comm.as_deref(),
-            Some(&exec_target),
         );
-
-        let score = state.scorer.get_score(alert.pid);
-        response_to_alert(&state.response_engine, alert.pid, &comm, score);
+        maybe_respond(state, &alert_context);
     }
 }
