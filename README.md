@@ -58,6 +58,27 @@ cd lavender-ebpf
 cargo +nightly build --target bpfel-unknown-none -Z build-std=core --release
 ```
 
+## Tests
+All current tests live under `agent/tests` as integration tests.
+
+Run the full agent test suite from repository root:
+
+```bash
+cargo test -p agent --tests
+```
+
+Run all workspace tests:
+
+```bash
+cargo test --workspace
+```
+
+Current test files:
+- `agent/tests/correlator_tests.rs`
+- `agent/tests/detection_tests.rs`
+- `agent/tests/runtime_state_tests.rs`
+- `agent/tests/scorer_tests.rs`
+
 ## Run
 From repository root:
 
@@ -81,49 +102,16 @@ On success, you should see:
 Lavender is watching. Ctrl+C to stop
 ```
 
-## Configuration (`lavender.toml`)
-Lavender uses a TOML config file at the repository root:
+## Configuration
+Lavender configuration is documented in:
 
-```text
-lavender.toml
-```
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
-Current keys:
-- `filters.safe_shell_launchers`: process names allowed to launch shells without alerting
-- `filters.ignored_comms`: process names to skip during detection
-- `filters.safe_file_readers`: process names allowed to read sensitive files without alerting
-- `filters.shell_names`: process names treated as shells in detections/correlation
-- `filters.sensitive_files`: sensitive path patterns for file-open checks
-- `filters.suspicious_ports`: destination ports treated as suspicious
-- `filters.noisy_comms`: noisy process names suppressed in correlation rules
-- `filters.correlator_max_events`: per-pid buffer size for correlation
-- `filters.correlator_max_age_secs`: staleness window for buffered events
-- `response.dry_run`: when true, print response intent without sending kill
-- `response.kill_threshold`: minimum total score required before response
-- `response.protected_comms`: comm patterns excluded from kill response
-
-Example:
-
-```toml
-[filters]
-safe_shell_launchers = ["tmux", "alacritty", "kitty", "sshd", "sudo", "su", "login", "Hyprland", "code"]
-ignored_comms = ["cpuUsage.sh"]
-safe_file_readers = ["sshd", "sudo", "passwd", "shadow", "pam", "bash", "zsh", "sh", "code", "vim", "nvim", "nano"]
-shell_names = ["bash", "sh", "zsh", "fish", "dash"]
-sensitive_files = ["/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d", "/.ssh/id_rsa", "/.ssh/id_ed25519", "/.ssh/authorized_keys", "/.bash_history", "/.zsh_history", "/root/.ssh"]
-suspicious_ports = [4444, 1337, 9001, 9999, 6666, 31337, 5555]
-noisy_comms = ["code", "cpuUsage", "cargo", "rustc", "make"]
-correlator_max_events = 20
-correlator_max_age_secs = 30
-
-[response]
-dry_run = true
-kill_threshold = 200
-protected_comms = ["systemd", "sshd", "sudo", "init", "lavender", "agent", "kernel"]
-```
-
-The agent reads `lavender.toml` from the current working directory.
-When running from the repository root (recommended), this works out of the box.
+That document covers:
+- available keys in `lavender.toml`
+- config loading order and defaults
+- example config values
+- running with explicit `LAVENDER_CONFIG`
 
 ## Save Output To JSON
 Capture all normal events to `events.json` and alerts to `alerts.json`:
@@ -190,4 +178,14 @@ Alert rules currently emitted:
 - `CHAIN Rapid process spawning`
 
 Current eBPF map/program names are defined in `lavender-ebpf/src/main.rs`.
+
+## Development Notes
+- Build with your normal user account, run the binary with `sudo`.
+- A quick local verification loop is:
+
+```bash
+cargo test -p agent --tests
+cargo build --package agent
+sudo ./target/debug/agent
+```
 
