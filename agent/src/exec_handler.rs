@@ -11,6 +11,14 @@ use crate::runtime::{
 };
 use crate::users::UserDb;
 
+/// Handles one exec event from the eBPF ring buffer.
+///
+/// Responsibilities:
+/// - decode event payload fields (`comm`, `filename`, argv)
+/// - update process-tree metadata for lineage reconstruction
+/// - feed exec activity into correlator chain detection
+/// - emit exec output and run exec-focused detection rules
+/// - record/score alerts and trigger response policy when applicable
 pub fn handle_event(
     event: &ExecEvent,
     state: &mut RuntimeState,

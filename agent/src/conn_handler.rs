@@ -11,6 +11,14 @@ use crate::runtime::{
 };
 use crate::users::UserDb;
 
+/// Handles one network-connect event from the eBPF ring buffer.
+///
+/// Responsibilities:
+/// - apply basic noise filters (port 0 and localhost IPv4)
+/// - decode/format connection details and ancestry context
+/// - feed connect activity into correlator chain detection
+/// - track first-seen network callers
+/// - run network-focused rules and alert/response pipeline
 pub fn handle_event(
     event: &ConnEvent,
     state: &mut RuntimeState,

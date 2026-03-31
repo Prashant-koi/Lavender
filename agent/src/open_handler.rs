@@ -9,6 +9,13 @@ use crate::runtime::{
     maybe_respond, push_correlator_and_process_alert, record_alert, RuntimeState,
 };
 
+/// Handles one file-open event from the eBPF ring buffer.
+///
+/// Responsibilities:
+/// - decode open payload fields (`comm`, `filename`)
+/// - build ancestry context for scoring and correlation
+/// - feed file-open activity into correlator chain detection
+/// - run sensitive-file-read detection and alert pipeline
 pub fn handle_event(
     event: &OpenEvent,
     state: &mut RuntimeState,
