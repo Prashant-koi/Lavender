@@ -7,6 +7,8 @@ pub mod scorer;
 pub mod response;
 
 pub mod runtime;
+pub mod bootstrap;
+pub mod event_loop;
 pub mod exec_handler;
 pub mod open_handler;
 pub mod conn_handler;
