@@ -150,12 +150,27 @@ impl Correlator { // implementing some methids for the correlator struct
             return None;
         }
 
-        // we wil first collect the event kinds in order which will just make the overall process easier for us
-        let kinds: Vec<&EventKind> = related_events.iter().map(|e| &e.kind).collect();
+        // Reverse shell behaviour rule.
+        if let Some(alert) = self.reverse_shell_rule(pid, &related_events) {
+            return Some(alert);
+        }
 
-        // Reverse shell behaviour rule
-        // strict order: execve(bash) -> connect(external) -> execve(sh)
-        // this is stronger than just checking shell + network happened sometime in the buffer
+        // Rule checking for execution after sensitive file read.
+        if let Some(alert) = self.cred_exec_rule(pid, &related_events) {
+            return Some(alert);
+        }
+
+        // Rule checking for rapid process spawning.
+        self.rapid_spawn_rule(pid, current_event, &related_events)
+    }
+
+    // strict order: execve(bash) -> connect(external) -> execve(sh)
+    // this is stronger than just checking shell + network happened sometime in the buffer
+    fn reverse_shell_rule(
+        &self,
+        pid: u32,
+        related_events: &[BufferedEvent],
+    ) -> Option<CorrelationAlert> {
         for i in 0..related_events.len() {
             let first = &related_events[i];
             if !Self::is_exec_target(first, "bash") {
@@ -185,8 +200,15 @@ impl Correlator { // implementing some methids for the correlator struct
             }
         }
 
-        // rule chekcing for execution after file read
-        // we will try to find the patter of openign a sensitive file and then executing something
+        None
+    }
+
+    // we will try to find the pattern of opening a sensitive file and then executing something
+    fn cred_exec_rule(
+        &self,
+        pid: u32,
+        related_events: &[BufferedEvent],
+    ) -> Option<CorrelationAlert> {
         let read_sensitive = related_events.iter().any(|e|
             e.kind == EventKind::FileOpen &&
             self.sensitive_file_patterns
@@ -194,26 +216,43 @@ impl Correlator { // implementing some methids for the correlator struct
                 .any(|s| e.detail.contains(s.as_str()))
         );
 
+        if !read_sensitive {
+            return None;
+        }
+
+        let kinds: Vec<&EventKind> = related_events.iter().map(|e| &e.kind).collect();
         let exec_after = kinds.windows(2).any(|w|
             w[0] == &EventKind::FileOpen &&
             w[1] == &EventKind::Exec
         );
 
-        if read_sensitive && exec_after {
-            return Some(CorrelationAlert { 
-                pid,
-                rule: "CHAIN Credential access then execution",
-                detail: format!(
-                    "process read sensitive file then executed a new process"
-                ),
-            });
+        if !exec_after {
+            return None;
         }
 
-        // rule checking for rapid process spawning for things like fork bomb, worm, enumeration scripts
-        // the pattern it will check for is more than 5 exec events in 10s seconds, I feel like this will
-        // have alot of false positives
+        Some(CorrelationAlert {
+            pid,
+            rule: "CHAIN Credential access then execution",
+            detail: format!(
+                "process read sensitive file then executed a new process"
+            ),
+        })
+    }
+
+    // the pattern it checks is 5+ exec events in less than 10 seconds
+    fn rapid_spawn_rule(
+        &self,
+        pid: u32,
+        current_event: &BufferedEvent,
+        related_events: &[BufferedEvent],
+    ) -> Option<CorrelationAlert> {
         // only evaluate this rule when the current event itself is exec so we don't keep re-firing on open/connect events
         if current_event.kind != EventKind::Exec {
+            return None;
+        }
+
+        // if the current chain ancestry is noisy (e.g. code), skip this rapid rule entirely
+        if Self::ancestry_has_noisy_comm(&current_event.ancestry, &self.noisy_comms) {
             return None;
         }
 
@@ -224,29 +263,21 @@ impl Correlator { // implementing some methids for the correlator struct
             .filter(|e| !self.is_noisy_comm(&e.comm))
             .collect();
 
-        // if the current chain ancestry is noisy (e.g. code), skip this rapid rule entirely
-        if Self::ancestry_has_noisy_comm(&current_event.ancestry, &self.noisy_comms) {
+        let exec_count = exec_events.len();
+        if exec_count < 5 {
             return None;
         }
 
-        let exec_count = exec_events.len();
+        let oldest_exec = exec_events.first().map(|e| e.timestamp).unwrap_or(0);
+        let newest_exec = exec_events.last().map(|e| e.timestamp).unwrap_or(0);
 
-        if exec_count >= 5 {
-            let oldest_exec = exec_events.first().map(|e| e.timestamp).unwrap_or(0);
-
-            let newest_exec = exec_events.last().map(|e| e.timestamp).unwrap_or(0);
-
-            // all 5 or more withing 10 secs
-            if newest_exec - oldest_exec < 10 {
-                return Some(CorrelationAlert { 
-                    pid,
-                    rule: "CHAIN Rapid process spawning",
-                    detail: format!(
-                        "{} processes spawned within 10 seconds",
-                        exec_count
-                    ),
-                });
-            }
+        // all 5 or more within 10 secs
+        if newest_exec - oldest_exec < 10 {
+            return Some(CorrelationAlert {
+                pid,
+                rule: "CHAIN Rapid process spawning",
+                detail: format!("{} processes spawned within 10 seconds", exec_count),
+            });
         }
 
         None
