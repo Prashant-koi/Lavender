@@ -1,14 +1,13 @@
 // For detection rules
+use self::path::basename;
+
+pub mod path;
 
 pub struct Alert {
     pub pid: u32,
     pub rule: &'static str,
     pub detail: String,
     pub ancestry: String,
-}
-
-fn basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
 }
 
 // patterns that usually show encoded/obfuscated execution or payload fetch-and-run behavior

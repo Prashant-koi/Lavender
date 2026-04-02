@@ -4,11 +4,13 @@ use crate::config::Config;
 use crate::correlator::BufferedEvent;
 use crate::detection;
 use crate::output;
-use crate::runtime::{
-    AlertContext,
-    ancestry_or_unknown, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
-    maybe_respond, push_correlator_and_process_alert, record_alert, RuntimeState,
+use crate::output::format::format_ip;
+use crate::handlers::decode_c_string;
+use crate::runtime::alert_pipeline::{
+    AlertContext, maybe_respond, push_correlator_and_process_alert, record_alert,
 };
+use crate::runtime::ancestry::{ancestry_or_unknown, build_ancestry_chain, parent_comm_for_pid};
+use crate::runtime::RuntimeState;
 use crate::users::UserDb;
 
 /// Handles one network-connect event from the eBPF ring buffer.
@@ -38,7 +40,7 @@ pub fn handle_event(
     }
 
     let user = user_db.resolve(event.uid);
-    let dest_ip = output::format_ip(event);
+    let dest_ip = format_ip(event);
 
     let ancestry = build_ancestry_chain(event.pid, &state.process_tree);
     let ancestry_for_event = ancestry_or_unknown(ancestry);

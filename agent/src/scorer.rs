@@ -1,4 +1,6 @@
-use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
+use std::collections::HashMap;
+
+use crate::output::format;
 
 
 // point values for each detection rule
@@ -116,7 +118,7 @@ impl Scorer {
         rule: &'static str,
         points: u32,
     ) -> Option<(u32, Severity)> {
-        let now = self.now_secs();
+        let now = format::now_secs();
         let entry = self.scores.entry(pid).or_insert(ProcessScore { 
             score:  0,
             last_updated: now,
@@ -210,10 +212,6 @@ impl Scorer {
 
     pub fn get_score(&self, pid: u32) -> u32 {
         self.scores.get(&pid).map(|e| e.score).unwrap_or(0)
-    }
-
-    fn now_secs(&self) -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
     }
 
     fn lineage_bonus(ancestry: &str) -> u32 {

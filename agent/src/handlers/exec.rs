@@ -3,12 +3,14 @@ use common::ExecEvent;
 use crate::config::Config;
 use crate::correlator::BufferedEvent;
 use crate::detection;
-use crate::output;
-use crate::runtime::{
-    AlertContext,
-    basename, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
-    maybe_respond, push_correlator_and_process_alert, record_alert, resolve_ppid, RuntimeState,
+use crate::detection::path::basename;
+use crate::handlers::decode_c_string;
+use crate::runtime::alert_pipeline::{
+    AlertContext, maybe_respond, push_correlator_and_process_alert, record_alert,
 };
+use crate::runtime::ancestry::{build_ancestry_chain, parent_comm_for_pid};
+use crate::output;
+use crate::runtime::{resolve_ppid, RuntimeState};
 use crate::users::UserDb;
 
 /// Handles one exec event from the eBPF ring buffer.

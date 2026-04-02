@@ -1,26 +1,9 @@
-use std::collections::{HashMap, HashSet};
-
-use crate::config::Config;
-use crate::correlator::{BufferedEvent, Correlator};
+use crate::correlator::BufferedEvent;
 use crate::output;
-use crate::response::{ResponseAction, ResponseEngine, SkipReason};
-use crate::scorer::{ScoreContext, Scorer};
+use crate::response::{ResponseAction, SkipReason};
+use crate::scorer::ScoreContext;
 
-#[derive(Clone, Debug)]
-pub struct ProcessNode {
-    pub pid: u32,
-    pub ppid: u32,
-    pub comm: String,
-    pub filename: String,
-}
-
-pub struct RuntimeState {
-    pub process_tree: HashMap<u32, ProcessNode>,
-    pub correlator: Correlator,
-    pub scorer: Scorer,
-    pub response_engine: ResponseEngine,
-    pub seen_network_callers: HashSet<String>,
-}
+use super::RuntimeState;
 
 #[derive(Clone, Copy, Debug)]
 pub struct AlertContext<'a> {
@@ -49,90 +32,9 @@ impl<'a> AlertContext<'a> {
     }
 }
 
-impl RuntimeState {
-    pub fn new(config: &Config) -> Self {
-        Self {
-            process_tree: HashMap::new(),
-            correlator: Correlator::from_filters(&config.filters),
-            scorer: Scorer::new(),
-            response_engine: ResponseEngine::from_config(&config.response),
-            seen_network_callers: HashSet::new(),
-        }
-    }
-}
-
-pub fn build_ancestry_chain(pid: u32, tree: &HashMap<u32, ProcessNode>) -> String {
-    let mut chain = vec![];
-    let mut current_pid = pid;
-
-    //we will walk upward through parents and go max of 8 levels
-    // max limit to stop inf loops in case the data is weird
-    for _ in 0..8 {
-        match tree.get(&current_pid) {
-            Some(node) => {
-                chain.push(node.comm.clone());
-                if node.ppid == 0 || node.ppid == current_pid {
-                    //either we reached init or a cycle
-                    break;
-                }
-                current_pid = node.ppid;
-            }
-            None => break,
-        }
-    }
-
-    // reverse the chian since we built it button up
-    chain.reverse();
-    chain.join("=>")
-}
-
-// ppid resolve function
-pub fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
-    if kernel_ppid != 0 {
-        return kernel_ppid;
-    }
-
-    let status_path = format!("/proc/{}/status", pid);
-    let contents = match std::fs::read_to_string(status_path) {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
-
-    for line in contents.lines() {
-        if let Some(rest) = line.strip_prefix("PPid:") {
-            return rest.trim().parse::<u32>().unwrap_or(0);
-        }
-    }
-
-    0
-}
-
-pub fn decode_c_string(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).to_string()
-}
-
-pub fn basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-
-pub fn parent_comm_for_pid(pid: u32, tree: &HashMap<u32, ProcessNode>) -> Option<String> {
-    let node = tree.get(&pid)?;
-    let parent = tree.get(&node.ppid)?;
-    Some(parent.comm.clone())
-}
-
-pub fn ancestry_or_unknown(ancestry: String) -> String {
-    if ancestry.is_empty() {
-        "unknown".to_string()
-    } else {
-        ancestry
-    }
-}
-
 // making a function of this because we have been doing this alot
 pub fn add_score_and_print_alert(
-    scorer: &mut Scorer,
+    scorer: &mut crate::scorer::Scorer,
     pid: u32,
     rule: &'static str,
     detail: &str,
@@ -164,7 +66,7 @@ pub fn add_score_and_print_alert(
 }
 
 pub fn response_to_alert(
-    response_engine: &ResponseEngine,
+    response_engine: &crate::response::ResponseEngine,
     pid: u32,
     comm: &str,
     score: u32,

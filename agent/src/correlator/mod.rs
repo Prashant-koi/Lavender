@@ -1,6 +1,10 @@
-use std::{collections::{HashMap, VecDeque}, time::{SystemTime, UNIX_EPOCH}};
+use std::collections::{HashMap, VecDeque};
 
 use crate::config::Filters;
+use crate::detection::path::basename;
+use crate::output::format::now_secs;
+
+mod rules;
 
 // what kind of event we are going to buffer
 #[derive(Debug, Clone, PartialEq)]
@@ -21,16 +25,12 @@ pub struct BufferedEvent {
 }
 
 impl BufferedEvent {
-    fn now_secs() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
-    }
-
     pub fn exec(comm: String, filename: String, ancestry: String) -> Self {
         Self {
             kind: EventKind::Exec,
             comm,
             detail: filename,
-            timestamp: Self::now_secs(),
+            timestamp: now_secs(),
             ancestry,
         }
     }
@@ -40,7 +40,7 @@ impl BufferedEvent {
             kind: EventKind::Connect,
             comm,
             detail: dest_ip,
-            timestamp: Self::now_secs(),
+            timestamp: now_secs(),
             ancestry,
         }
     }
@@ -50,7 +50,7 @@ impl BufferedEvent {
             kind: EventKind::FileOpen,
             comm,
             detail: filename,
-            timestamp: Self::now_secs(),
+            timestamp: now_secs(),
             ancestry,
         }
     }
@@ -73,10 +73,6 @@ pub struct Correlator {
     noisy_comms: Vec<String>,
 }
 
-fn basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-
 impl Correlator { // implementing some methids for the correlator struct
     pub fn from_filters(filters: &Filters) -> Self {
         Self { 
@@ -95,7 +91,7 @@ impl Correlator { // implementing some methids for the correlator struct
         event: BufferedEvent,
     ) -> Option<CorrelationAlert> {
         
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = now_secs();
 
         {
             let buf = self.buffers.entry(pid).or_insert_with(VecDeque::new);
@@ -151,136 +147,17 @@ impl Correlator { // implementing some methids for the correlator struct
         }
 
         // Reverse shell behaviour rule.
-        if let Some(alert) = self.reverse_shell_rule(pid, &related_events) {
+        if let Some(alert) = rules::reverse_shell_rule(pid, &related_events) {
             return Some(alert);
         }
 
         // Rule checking for execution after sensitive file read.
-        if let Some(alert) = self.cred_exec_rule(pid, &related_events) {
+        if let Some(alert) = rules::cred_exec_rule(self, pid, &related_events) {
             return Some(alert);
         }
 
         // Rule checking for rapid process spawning.
-        self.rapid_spawn_rule(pid, current_event, &related_events)
-    }
-
-    // strict order: execve(bash) -> connect(external) -> execve(sh)
-    // this is stronger than just checking shell + network happened sometime in the buffer
-    fn reverse_shell_rule(
-        &self,
-        pid: u32,
-        related_events: &[BufferedEvent],
-    ) -> Option<CorrelationAlert> {
-        for i in 0..related_events.len() {
-            let first = &related_events[i];
-            if !Self::is_exec_target(first, "bash") {
-                continue;
-            }
-
-            for j in (i + 1)..related_events.len() {
-                let second = &related_events[j];
-                if !Self::is_external_connect(second) {
-                    continue;
-                }
-
-                for k in (j + 1)..related_events.len() {
-                    let third = &related_events[k];
-                    if !Self::is_exec_target(third, "sh") {
-                        continue;
-                    }
-
-                    return Some(CorrelationAlert {
-                        pid,
-                        rule: "CHAIN Reverse shell behaviour",
-                        detail: format!(
-                            "ordered reverse-shell chain matched: execve(bash) -> connect(external) -> execve(sh)"
-                        ),
-                    });
-                }
-            }
-        }
-
-        None
-    }
-
-    // we will try to find the pattern of opening a sensitive file and then executing something
-    fn cred_exec_rule(
-        &self,
-        pid: u32,
-        related_events: &[BufferedEvent],
-    ) -> Option<CorrelationAlert> {
-        let read_sensitive = related_events.iter().any(|e|
-            e.kind == EventKind::FileOpen &&
-            self.sensitive_file_patterns
-                .iter()
-                .any(|s| e.detail.contains(s.as_str()))
-        );
-
-        if !read_sensitive {
-            return None;
-        }
-
-        let kinds: Vec<&EventKind> = related_events.iter().map(|e| &e.kind).collect();
-        let exec_after = kinds.windows(2).any(|w|
-            w[0] == &EventKind::FileOpen &&
-            w[1] == &EventKind::Exec
-        );
-
-        if !exec_after {
-            return None;
-        }
-
-        Some(CorrelationAlert {
-            pid,
-            rule: "CHAIN Credential access then execution",
-            detail: format!(
-                "process read sensitive file then executed a new process"
-            ),
-        })
-    }
-
-    // the pattern it checks is 5+ exec events in less than 10 seconds
-    fn rapid_spawn_rule(
-        &self,
-        pid: u32,
-        current_event: &BufferedEvent,
-        related_events: &[BufferedEvent],
-    ) -> Option<CorrelationAlert> {
-        // only evaluate this rule when the current event itself is exec so we don't keep re-firing on open/connect events
-        if current_event.kind != EventKind::Exec {
-            return None;
-        }
-
-        // if the current chain ancestry is noisy (e.g. code), skip this rapid rule entirely
-        if Self::ancestry_has_noisy_comm(&current_event.ancestry, &self.noisy_comms) {
-            return None;
-        }
-
-        // exclude noisy comms from the rapid-spawn calculation to avoid editor/tooling burst false positives
-        let exec_events: Vec<&BufferedEvent> = related_events
-            .iter()
-            .filter(|e| e.kind == EventKind::Exec)
-            .filter(|e| !self.is_noisy_comm(&e.comm))
-            .collect();
-
-        let exec_count = exec_events.len();
-        if exec_count < 5 {
-            return None;
-        }
-
-        let oldest_exec = exec_events.first().map(|e| e.timestamp).unwrap_or(0);
-        let newest_exec = exec_events.last().map(|e| e.timestamp).unwrap_or(0);
-
-        // all 5 or more within 10 secs
-        if newest_exec - oldest_exec < 10 {
-            return Some(CorrelationAlert {
-                pid,
-                rule: "CHAIN Rapid process spawning",
-                detail: format!("{} processes spawned within 10 seconds", exec_count),
-            });
-        }
-
-        None
+        rules::rapid_spawn_rule(self, pid, current_event, &related_events)
     }
 
     fn collect_related_events(
@@ -311,13 +188,13 @@ impl Correlator { // implementing some methids for the correlator struct
         events
     }
 
-    fn is_noisy_comm(&self, comm: &str) -> bool {
+    pub(super) fn is_noisy_comm(&self, comm: &str) -> bool {
         self.noisy_comms
             .iter()
             .any(|s| comm.contains(s.as_str()))
     }
 
-    fn ancestry_has_noisy_comm(ancestry: &str, noisy_comms: &[String]) -> bool {
+    pub(super) fn ancestry_has_noisy_comm(ancestry: &str, noisy_comms: &[String]) -> bool {
         ancestry
             .split("=>")
             .any(|segment| noisy_comms.iter().any(|n| segment.contains(n.as_str())))
@@ -342,7 +219,7 @@ impl Correlator { // implementing some methids for the correlator struct
         full.starts_with(&prefixed)
     }
 
-    fn is_exec_target(event: &BufferedEvent, target_shell: &str) -> bool {
+    pub(super) fn is_exec_target(event: &BufferedEvent, target_shell: &str) -> bool {
         if event.kind != EventKind::Exec {
             return false;
         }
@@ -351,7 +228,7 @@ impl Correlator { // implementing some methids for the correlator struct
         target_base == target_shell
     }
 
-    fn is_external_connect(event: &BufferedEvent) -> bool {
+    pub(super) fn is_external_connect(event: &BufferedEvent) -> bool {
         if event.kind != EventKind::Connect {
             return false;
         }

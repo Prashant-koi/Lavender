@@ -3,11 +3,12 @@ use common::OpenEvent;
 use crate::config::Config;
 use crate::correlator::BufferedEvent;
 use crate::detection;
-use crate::runtime::{
-    AlertContext,
-    ancestry_or_unknown, build_ancestry_chain, decode_c_string, parent_comm_for_pid,
-    maybe_respond, push_correlator_and_process_alert, record_alert, RuntimeState,
+use crate::handlers::decode_c_string;
+use crate::runtime::alert_pipeline::{
+    AlertContext, maybe_respond, push_correlator_and_process_alert, record_alert,
 };
+use crate::runtime::ancestry::{ancestry_or_unknown, build_ancestry_chain, parent_comm_for_pid};
+use crate::runtime::RuntimeState;
 
 /// Handles one file-open event from the eBPF ring buffer.
 ///
