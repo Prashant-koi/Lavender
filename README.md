@@ -28,24 +28,39 @@ The project uses:
 ## Architecture (Subject to Change)
 ```mermaid
 flowchart LR
-      subgraph Endpoints
+      subgraph "Endpoints (Rust)"
           E["Endpoint Agent"]
           S["Local Spool"]
           E --> S
       end
 
-      E --> I["Ingest Tier"]
-      I --> Q["Message Queue"]
-      Q --> D["Detection Workers"]
+      E --> I["Ingest Tier (Go)"]
+      I --> Q["Message Queue (Kafka)"]
+
+      subgraph DetectionPlane["Detection Plane (Go)"]
+          D["Detection Workers"]
+          R["Rule / Policy Config"]
+          CS["Correlation State"]
+          R --> D
+          CS --> D
+      end
+
+      Q --> D
 
       D --> P["PostgreSQL"]
-      D --> T["Telemetry Store"]
-      D --> O["Object Storage"]
+      D --> T["Telemetry Store (ClickHouse)"]
+      D --> O["Object Storage (MinIO)"]
+      D --> A["Dashboard Aggregates / Cache"]
 
-      C["Control Plane"] --> E
-      U["Dashboard / API"] --> P
+      C["Control Plane (Go)"] -- "gRPC" --> E
+      C --> R
+      C --> CS
+      D --> C
+
+      U["Dashboard / API (Go +TS UI)"] --> C
+      U --> P
       U --> T
-      U --> C
+      U --> A
 ```
 
 ## Prerequisites
