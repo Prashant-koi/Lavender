@@ -25,6 +25,28 @@ The project uses:
 - `common`: shared Rust event structs used by both sides
 - `lavender.toml`: runtime filtering config
 
+## Architecture (Subject to Change)
+```mermaid
+flowchart LR
+      subgraph Endpoints
+          E["Endpoint Agent"]
+          S["Local Spool"]
+          E --> S
+      end
+
+      E --> I["Ingest Tier"]
+      I --> Q["Message Queue"]
+      Q --> D["Detection Workers"]
+
+      D --> P["PostgreSQL"]
+      D --> T["Telemetry Store"]
+      D --> O["Object Storage"]
+
+      C["Control Plane"] --> E
+      U["Dashboard / API"] --> P
+      U --> T
+      U --> C
+```
 
 ## Prerequisites
 - Linux kernel with BTF enabled (check if `/sys/kernel/btf/vmlinux` exists)
