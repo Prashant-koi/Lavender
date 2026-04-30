@@ -28,40 +28,51 @@ The project uses:
 ## Architecture (Subject to Change)
 ```mermaid
 flowchart LR
-      subgraph "Endpoints (Rust)"
+      subgraph "Data Plane (Rust)"
           E["Endpoint Agent"]
-          S["Local Spool"]
+          S["Minimal Local Spool / Buffer"]
           E --> S
       end
 
-      E --> I["Ingest Tier (Go)"]
-      I --> Q["Message Queue (Kafka)"]
+      E <-->|"Telemetry, heartbeats, commands, policy"| Q["NATS / JetStream"]
+
+      I["Ingest Tier (Go)
+validate, rate-limit, timestamp"]
+      Q --> I
+      I --> CE["Canonical Event Stream"]
 
       subgraph DetectionPlane["Detection Plane (Go)"]
           D["Detection Workers"]
           R["Rule / Policy Config"]
-          CS["Correlation State"]
+          CS["Correlation State (Redis/shared)"]
           R --> D
           CS --> D
       end
 
-      Q --> D
+      CE --> D
+      CE --> L["Live Views / Telemetry Stream"]
+      D --> AL["Alerts Subject"]
+      CE --> P["PostgreSQL (TimescaleDB for telemetry)"]
 
-      D --> P["PostgreSQL"]
-      D --> T["Telemetry Store (ClickHouse)"]
-      D --> O["Object Storage (MinIO)"]
-      D --> A["Dashboard Aggregates / Cache"]
-
-      C["Control Plane (Go)"] -- "gRPC" --> E
+      Q --> H["Heartbeat Subjects"]
+      H --> C["Control Plane (Go)"]
+      C -- "Publish commands / policy" --> Q
       C --> R
       C --> CS
-      D --> C
+      AL --> C
 
       U["Dashboard / API (Go +TS UI)"] --> C
       U --> P
-      U --> T
-      U --> A
+      C -- "WebSocket / SSE" --> U
+      L --> C
 ```
+
+Agents maintain authenticated outbound connections to `NATS / JetStream`. They publish
+telemetry and heartbeats, and subscribe to per-agent command or policy subjects owned by
+the control plane. The ingest tier consumes raw telemetry from NATS, applies validation,
+rate limits, and server-side timestamps, then emits a canonical event stream. Detection,
+storage, and live dashboard views all derive from that same canonical event stream so the
+live UI and persisted data stay aligned.
 
 ## Prerequisites
 - Linux kernel with BTF enabled (check if `/sys/kernel/btf/vmlinux` exists)
@@ -225,4 +236,3 @@ cargo test -p agent --tests
 cargo build --package agent
 sudo ./target/debug/agent
 ```
-
