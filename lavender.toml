@@ -1,3 +1,6 @@
+[agent]
+agent_id = "dev-agent-1"
+
 [filters] 
 # processes that are allowed to spawn shells
 safe_shell_launchers = [
@@ -5,6 +8,7 @@ safe_shell_launchers = [
     "sshd", "sudo", "su", "login",
     "Hyprland", "code"
 ]
+
 
 #ignore this one as it is too common
 ignored_comms = [

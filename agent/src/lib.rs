@@ -4,6 +4,7 @@ pub mod scorer;
 pub mod response;
 pub mod bootstrap;
 pub mod event_loop;
+pub mod transport;
 
 pub mod runtime;
 pub mod output;

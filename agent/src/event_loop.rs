@@ -9,6 +9,16 @@ use crate::open_handler;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
 
+
+  fn now_unix_ms() -> u64 {
+      use std::time::{SystemTime, UNIX_EPOCH};
+
+      SystemTime::now()
+          .duration_since(UNIX_EPOCH)
+          .unwrap()
+          .as_millis() as u64
+  }
+
 pub async fn run(
     mut bootstrap: AgentBootstrap,
     config: Config,
@@ -31,6 +41,18 @@ pub async fn run(
                     // The kernel writes ExecEvent bytes into the ring buffer map
                     // We just convert those bytes
                     let event = unsafe { &*(item.as_ptr() as *const ExecEvent) };
+                    
+                    //using this to test if it was working or not will need to update later!
+                    let canonical = crate::transport::exec_to_canonical(
+                        event,
+                        &config.agent.agent_id,
+                        "localhost",
+                        now_unix_ms(),
+                    );
+
+                    if let Ok(json) = serde_json::to_string(&canonical) {
+                        println!("{json}");
+                    }
 
                     // This updates process-tree metadata, feeds exec events into correlator,
                     // and checks shell-spawn and obfuscated-command rules.

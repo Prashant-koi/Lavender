@@ -1,4 +1,4 @@
-use agent::config::{Config, Filters, ResponseConfig};
+use agent::config::{AgentConfig, Config, Filters, ResponseConfig};
 use agent::conn_handler;
 use agent::correlator::{BufferedEvent, EventKind};
 use agent::exec_handler;
@@ -9,6 +9,9 @@ use common::{ConnEvent, ExecEvent};
 
 fn default_config() -> Config {
     Config {
+        agent: AgentConfig {
+            agent_id: "test-agent-1".into(),
+        },
         filters: Filters {
             safe_shell_launchers: vec!["code".into(), "tmux".into()],
             ignored_comms: vec![],

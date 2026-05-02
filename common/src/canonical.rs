@@ -7,7 +7,7 @@ pub struct CanonicalEvent {
     pub tenant_id: Option<String>, 
     pub host: HostInfo,
     pub observed_at_unix_ms: u64, // when the agent observed
-    pub received_at_unix_ms: u64, // when the ingest tier recieved
+    pub received_at_unix_ms: Option<u64>, // when the ingest tier recieved
     pub event: EventKind,
 }
 
@@ -21,12 +21,12 @@ pub struct HostInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag="type", rename_all="snake_case")]
 pub enum EventKind {
-    Exec(EventTelemetry),
+    Exec(ExecTelemetry),
 }
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventTelemetry {
+pub struct ExecTelemetry {
     pub pid: u32,
     pub ppid: u32,
     pub uid: u32,

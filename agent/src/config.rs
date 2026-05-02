@@ -3,9 +3,15 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
+    pub agent: AgentConfig,
     pub filters: Filters,
     pub response: ResponseConfig,
 } 
+
+#[derive(Deserialize, Debug)]
+pub struct AgentConfig {
+    pub agent_id: String, // can expand this alter 
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Filters {
@@ -139,6 +145,9 @@ impl Config {
 
     fn default() -> Self {
         Config { 
+            agent: AgentConfig {
+                agent_id: "dev-agent-1".into(),
+            },
             filters: Filters {
                 safe_shell_launchers: vec![
                     "tmux".into(), "alacritty".into(), "kitty".into(),
