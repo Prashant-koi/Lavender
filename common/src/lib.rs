@@ -1,3 +1,9 @@
+#![no_std]
+
+#[cfg(feature = "transport")]
+extern crate alloc;
+
+#[cfg(feature = "transport")]
 pub mod transport;
 #[repr(C)]
 pub struct ExecEvent {

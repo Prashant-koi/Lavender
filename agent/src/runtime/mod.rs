@@ -38,7 +38,8 @@ impl RuntimeState {
     }
 }
 
-// ppid resolve function
+// ppid resolve function that we will be using as fallback if the ppid provided by eBPF(kernel)
+// is just 0 for some reason
 pub fn resolve_ppid(pid: u32, kernel_ppid: u32) -> u32 {
     if kernel_ppid != 0 {
         return kernel_ppid;

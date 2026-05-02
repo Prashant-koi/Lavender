@@ -43,24 +43,6 @@ pub async fn run(
                     // The kernel writes ExecEvent bytes into the ring buffer map
                     // We just convert those bytes
                     let event = unsafe { &*(item.as_ptr() as *const ExecEvent) };
-                    
-                    //using this to test if it was working or not will need to update later!
-                    let transport_event = crate::transport::exec_to_transport_event(
-                        event,
-                        &config.agent.agent_id,
-                        "localhost",
-                        now_unix_ms(),
-                    );
-
-                    
-                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
-                        if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, payload)
-                            .await
-                        {
-                            eprintln!("failed to publish telemetry: {err}");
-                        }
-                    }
 
                     // This updates process-tree metadata, feeds exec events into correlator,
                     // and checks shell-spawn and obfuscated-command rules.
@@ -70,6 +52,25 @@ pub async fn run(
                         &user_db,
                         &config,
                     );
+
+                    // Publish after exec handling so local runtime can still use its fallback
+                    // path, transport uses parent ppid from the eBPF agent now
+                    let transport_event = crate::transport::exec_to_transport_event(
+                        event,
+                        &config.agent.agent_id,
+                        "localhost",
+                        now_unix_ms(),
+                    );
+
+                    //publish
+                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
+                        if let Err(err) = publisher
+                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .await
+                        {
+                            eprintln!("failed to publish telemetry: {err}");
+                        }
+                    }
                 }
 
                 // Tell AsyncFd we handled this readiness notification.

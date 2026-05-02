@@ -43,6 +43,7 @@ pub fn handle_event(
         format!("{} {} {}", filename, argv1, argv2)
     };
 
+    // Trust the kernel/eBPF parent pid first and only fall back when it is missing.
     let ppid = resolve_ppid(event.pid, event.ppid);
     let user = user_db.resolve(event.uid);
 

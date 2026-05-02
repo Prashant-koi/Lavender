@@ -7,8 +7,9 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 [features]
 default = []
 std = []
+transport = ["dep:serde"]

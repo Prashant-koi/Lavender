@@ -1,12 +1,17 @@
 #![cfg_attr(target_arch = "bpf", no_std)]
 #![cfg_attr(target_arch = "bpf", no_main)]
 
+mod vmlinux;
+
 use aya_ebpf::{
     helpers::{
-        bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_uid_gid, bpf_probe_read_user, bpf_probe_read_user_str_bytes
+        bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_task_btf,
+        bpf_get_current_uid_gid, bpf_probe_read_kernel, bpf_probe_read_user,
+        bpf_probe_read_user_str_bytes,
     }, macros::{map, tracepoint}, maps::RingBuf, programs::TracePointContext
 };
 use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent};
+use vmlinux::task_struct;
 
 // all the maps
 
@@ -48,7 +53,7 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
         (*data).pid  = (id >> 32) as u32;
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm = comm;
-        (*data).ppid = 0; // will resolve this in userspace side don't even try doing that here please
+        (*data).ppid = current_ppid().unwrap_or(0);
         (*data).argv1 = [0u8; 128];
         (*data).argv2 = [0u8; 128];
 
@@ -112,6 +117,32 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
     Ok(())
 }
 
+// function top get the current ppid this is why we have to have 
+// vmlinux.rs
+fn current_ppid() -> Result<u32, i64> {
+    unsafe {
+        // bpf_get_current_task_btf gives typed pointer to current kernel task_struct
+        // for the process running the exec tracepoint
+        let task = bpf_get_current_task_btf() as *const task_struct;
+        if task.is_null() {
+            return Err(1);
+        }
+
+        // bpf_probe_read_kernel copies a kernel field into local eBPF stack memory
+        // so we read reak_parent so that we can get the parent task 
+        let parent = bpf_probe_read_kernel(core::ptr::addr_of!((*task).real_parent))
+            .map_err(|err| err as i64)?;
+        if parent.is_null() {
+            return Err(1);
+        }
+
+        // Then we read tgid which is what WE want to see as ppid
+        let ppid = bpf_probe_read_kernel(core::ptr::addr_of!((*parent).tgid))
+            .map_err(|err| err as i64)?;
+        Ok(ppid as u32)
+    }
+}
+
 // this function will handle the exit of processes this is that tracepoint
 
 #[tracepoint]
@@ -122,7 +153,8 @@ pub fn handle_exit(_ctx: TracePointContext) -> i32 {
     };
 
     let id = bpf_get_current_pid_tgid();
-    unsafe { (*slot.as_mut_ptr()).pid = (id >> 32) as u32; }
+    let pid = (id >> 32) as u32;
+    unsafe { (*slot.as_mut_ptr()).pid = pid; }
 
     slot.submit(0);
     0
