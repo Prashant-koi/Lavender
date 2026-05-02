@@ -1,5 +1,8 @@
 [agent]
 agent_id = "dev-agent-1"
+tenant_id = "dev"
+nats_url = "nats://127.0.0.1:4222"
+telemetry_subject_prefix = "telemetry.raw"
 
 [filters] 
 # processes that are allowed to spawn shells

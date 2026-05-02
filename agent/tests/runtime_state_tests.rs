@@ -11,6 +11,9 @@ fn default_config() -> Config {
     Config {
         agent: AgentConfig {
             agent_id: "test-agent-1".into(),
+            tenant_id: "test".into(),
+            nats_url: "nats://127.0.0.1:4222".into(),
+            telemetry_subject_prefix: "telemetry.raw".into(),
         },
         filters: Filters {
             safe_shell_launchers: vec!["code".into(), "tmux".into()],

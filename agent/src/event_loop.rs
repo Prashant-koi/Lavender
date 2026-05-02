@@ -6,6 +6,7 @@ use crate::conn_handler;
 use crate::exec_handler;
 use crate::exit_handler;
 use crate::open_handler;
+use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
 
@@ -23,6 +24,7 @@ pub async fn run(
     mut bootstrap: AgentBootstrap,
     config: Config,
     user_db: UserDb,
+    publisher: Publisher,
 ) {
     let mut state = RuntimeState::new(&config);
 
@@ -50,8 +52,14 @@ pub async fn run(
                         now_unix_ms(),
                     );
 
-                    if let Ok(json) = serde_json::to_string(&transport_event) {
-                        println!("{json}");
+                    
+                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
+                        if let Err(err) = publisher
+                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .await
+                        {
+                            eprintln!("failed to publish telemetry: {err}");
+                        }
                     }
 
                     // This updates process-tree metadata, feeds exec events into correlator,

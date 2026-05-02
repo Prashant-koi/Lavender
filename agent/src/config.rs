@@ -10,7 +10,10 @@ pub struct Config {
 
 #[derive(Deserialize, Debug)]
 pub struct AgentConfig {
-    pub agent_id: String, // can expand this alter 
+    pub agent_id: String,
+    pub tenant_id: String,
+    pub nats_url: String,
+    pub telemetry_subject_prefix:String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -147,6 +150,9 @@ impl Config {
         Config { 
             agent: AgentConfig {
                 agent_id: "dev-agent-1".into(),
+                tenant_id: "dev".into(),
+                nats_url: "nats://127.0.0.1:4222".into(),
+                telemetry_subject_prefix: "telemetry.raw".into(),
             },
             filters: Filters {
                 safe_shell_launchers: vec![
