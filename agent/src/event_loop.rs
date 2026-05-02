@@ -43,14 +43,14 @@ pub async fn run(
                     let event = unsafe { &*(item.as_ptr() as *const ExecEvent) };
                     
                     //using this to test if it was working or not will need to update later!
-                    let canonical = crate::transport::exec_to_canonical(
+                    let transport_event = crate::transport::exec_to_transport_event(
                         event,
                         &config.agent.agent_id,
                         "localhost",
                         now_unix_ms(),
                     );
 
-                    if let Ok(json) = serde_json::to_string(&canonical) {
+                    if let Ok(json) = serde_json::to_string(&transport_event) {
                         println!("{json}");
                     }
 

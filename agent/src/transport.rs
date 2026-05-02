@@ -1,23 +1,27 @@
-use common::canonical::{CanonicalEvent, EventKind, ExecTelemetry, HostInfo};
+use common::transport::{
+    AgentTelemetryEvent,
+    ExecTransportEvent,
+    HostInfo,
+    TransportEventKind,
+};
 use common::ExecEvent;
 
 //for now only gonna make one for exec events as a starating point
-pub fn exec_to_canonical(
+pub fn exec_to_transport_event(
     event: &ExecEvent,
     agent_id: &str,
     hostname: &str,
     observed_at_unix_ms: u64,
-) -> CanonicalEvent {
-    CanonicalEvent { 
+) -> AgentTelemetryEvent {
+    AgentTelemetryEvent {
         schema_version: 1,
         agent_id: agent_id.to_string(),
         tenant_id: None,
-        host: HostInfo { 
-           hostname: hostname.to_string() 
+        host: HostInfo {
+            hostname: hostname.to_string(),
         },
         observed_at_unix_ms,
-        received_at_unix_ms: None,
-        event: EventKind::Exec(ExecTelemetry {
+        event: TransportEventKind::Exec(ExecTransportEvent {
             pid: event.pid,
             ppid: event.ppid,
             uid: event.uid,
@@ -26,7 +30,7 @@ pub fn exec_to_canonical(
             argv: vec![bytes_to_string(&event.argv1), bytes_to_string(&event.argv2)]
                 .into_iter()
                 .filter(|s| !s.is_empty())
-                .collect(), 
+                .collect(),
         }),
     }
 }
