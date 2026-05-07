@@ -23,6 +23,7 @@ The project uses:
 - `agent`: Rust userspace loader (Aya) that loads/attaches probes and consumes ring buffers
 - `lavender-ebpf`: Rust eBPF probes (Aya eBPF)
 - `common`: shared Rust event structs used by both sides
+- `docker`: local development container definitions for broker and future infra services
 - `lavender.toml`: runtime filtering config
 
 ## Architecture (Subject to Change)
@@ -149,6 +150,11 @@ On success, you should see:
 ```text
 Lavender is watching. Ctrl+C to stop
 ```
+
+## Local Broker
+Local `NATS / JetStream` development setup is documented in:
+
+- [docker/nats/README.md](docker/nats/README.md)
 
 ## Configuration
 Lavender configuration is documented in:
