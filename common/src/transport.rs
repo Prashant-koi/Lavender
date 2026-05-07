@@ -21,6 +21,7 @@ pub struct HostInfo {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransportEventKind {
     Exec(ExecTransportEvent),
+    Heartbeat(HeartbeatTransportEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,4 +32,9 @@ pub struct ExecTransportEvent {
     pub comm: String,
     pub filename: String,
     pub argv: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatTransportEvent {
+    pub status: String,
 }

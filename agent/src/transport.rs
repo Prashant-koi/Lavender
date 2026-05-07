@@ -1,6 +1,7 @@
 use common::transport::{
     AgentTelemetryEvent,
     ExecTransportEvent,
+    HeartbeatTransportEvent,
     HostInfo,
     TransportEventKind,
 };
@@ -10,13 +11,14 @@ use common::ExecEvent;
 pub fn exec_to_transport_event(
     event: &ExecEvent,
     agent_id: &str,
+    tenant_id: &str,
     hostname: &str,
     observed_at_unix_ms: u64,
 ) -> AgentTelemetryEvent {
     AgentTelemetryEvent {
         schema_version: 1,
         agent_id: agent_id.to_string(),
-        tenant_id: None,
+        tenant_id: Some(tenant_id.to_string()),
         host: HostInfo {
             hostname: hostname.to_string(),
         },
@@ -31,6 +33,27 @@ pub fn exec_to_transport_event(
                 .into_iter()
                 .filter(|s| !s.is_empty())
                 .collect(),
+        }),
+    }
+}
+
+// the heartbeat messages will let the control plane track last seen state
+pub fn heartbeat_transport_event(
+    agent_id: &str,
+    tenant_id: &str,
+    hostname: &str,
+    observed_at_unix_ms: u64,
+) -> AgentTelemetryEvent {
+    AgentTelemetryEvent {
+        schema_version: 1,
+        agent_id: agent_id.to_string(),
+        tenant_id: Some(tenant_id.to_string()),
+        host: HostInfo {
+            hostname: hostname.to_string(),
+        },
+        observed_at_unix_ms,
+        event: TransportEventKind::Heartbeat(HeartbeatTransportEvent {
+            status: "alive".to_string(),
         }),
     }
 }

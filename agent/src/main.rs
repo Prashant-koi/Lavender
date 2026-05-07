@@ -14,6 +14,7 @@ async fn main() {
     let publisher = Publisher::connect(
         &config.agent.nats_url,
         &config.agent.telemetry_subject_prefix,
+        &config.agent.heartbeat_subject_prefix,
         &config.agent.tenant_id,
     )
     .await

@@ -13,7 +13,9 @@ pub struct AgentConfig {
     pub agent_id: String,
     pub tenant_id: String,
     pub nats_url: String,
-    pub telemetry_subject_prefix:String,
+    pub telemetry_subject_prefix: String,
+    pub heartbeat_subject_prefix: String,
+    pub heartbeat_interval_secs: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -153,6 +155,8 @@ impl Config {
                 tenant_id: "dev".into(),
                 nats_url: "nats://127.0.0.1:4222".into(),
                 telemetry_subject_prefix: "telemetry.raw".into(),
+                heartbeat_subject_prefix: "heartbeat".into(),
+                heartbeat_interval_secs: 15,
             },
             filters: Filters {
                 safe_shell_launchers: vec![

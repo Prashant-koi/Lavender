@@ -14,6 +14,8 @@ fn default_config() -> Config {
             tenant_id: "test".into(),
             nats_url: "nats://127.0.0.1:4222".into(),
             telemetry_subject_prefix: "telemetry.raw".into(),
+            heartbeat_subject_prefix: "heartbeat".into(),
+            heartbeat_interval_secs: 15,
         },
         filters: Filters {
             safe_shell_launchers: vec!["code".into(), "tmux".into()],

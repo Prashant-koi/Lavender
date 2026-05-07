@@ -10,15 +10,32 @@ use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
 
+fn now_unix_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-  fn now_unix_ms() -> u64 {
-      use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
 
-      SystemTime::now()
-          .duration_since(UNIX_EPOCH)
-          .unwrap()
-          .as_millis() as u64
-  }
+fn local_hostname() -> String {
+    if let Ok(value) = std::env::var("HOSTNAME") {
+        let value = value.trim().to_string();
+        if !value.is_empty() {
+            return value;
+        }
+    }
+
+    if let Ok(contents) = std::fs::read_to_string("/etc/hostname") {
+        let value = contents.trim().to_string();
+        if !value.is_empty() {
+            return value;
+        }
+    }
+
+    "unknown-host".into()
+}
 
 pub async fn run(
     mut bootstrap: AgentBootstrap,
@@ -27,6 +44,10 @@ pub async fn run(
     publisher: Publisher,
 ) {
     let mut state = RuntimeState::new(&config);
+    let hostname = local_hostname();
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(
+        config.agent.heartbeat_interval_secs,
+    ));
 
     println!("Lavender is watching. Ctrl+C to stop");
 
@@ -58,7 +79,8 @@ pub async fn run(
                     let transport_event = crate::transport::exec_to_transport_event(
                         event,
                         &config.agent.agent_id,
-                        "localhost",
+                        &config.agent.tenant_id,
+                        &hostname,
                         now_unix_ms(),
                     );
 
@@ -139,7 +161,27 @@ pub async fn run(
                 guard.clear_ready();
             }
 
-            // arm 5
+            // arm 5: agent heartbeat messages.
+            // this will give the control plane a stable liveness signal even when a host is mostly idle
+            _ = heartbeat.tick() => {
+                let heartbeat_event = crate::transport::heartbeat_transport_event(
+                    &config.agent.agent_id,
+                    &config.agent.tenant_id,
+                    &hostname,
+                    now_unix_ms(),
+                );
+
+                if let Ok(payload) = serde_json::to_vec(&heartbeat_event) {
+                    if let Err(err) = publisher
+                        .publish_heartbeat(&config.agent.agent_id, payload)
+                        .await
+                    {
+                        eprintln!("failed to publish heartbeat: {err}");
+                    }
+                }
+            }
+
+            // arm 6
             // Shutdowen with Ctrl + C. Don't remove for now
             _ = tokio::signal::ctrl_c() => {
                 println!("\nShutting down...");
