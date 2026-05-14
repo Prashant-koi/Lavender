@@ -1,0 +1,37 @@
+services:
+  nats:
+    image: nats:2.10
+    container_name: lavender-nats
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+
+  ingest:
+    build:
+      context: .
+      dockerfile: docker/ingest/Dockerfile
+    container_name: lavender-ingest
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      - nats
+    restart: on-failure
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent/Dockerfile
+    container_name: lavender-agent
+    privileged: true
+    depends_on:
+      - nats
+      - ingest
+    restart: on-failure
+    volumes:
+      - /sys/kernel/btf:/sys/kernel/btf:ro
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /sys/kernel/tracing:/sys/kernel/tracing
+      - /sys/kernel/debug:/sys/kernel/debug

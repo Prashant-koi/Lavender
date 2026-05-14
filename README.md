@@ -26,6 +26,12 @@ The project uses:
 - `docker`: local development container definitions for broker and future infra services
 - `lavender.toml`: runtime filtering config
 
+## Local Dev Infrastructure
+Container-based local development workflows are documented in:
+
+- [docker/compose/README.md](docker/compose/README.md) (for full local deployement check this)
+- [docker/nats/README.md](docker/nats/README.md)
+
 ## Architecture (Subject to Change)
 ```mermaid
 flowchart LR

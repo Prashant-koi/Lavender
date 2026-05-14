@@ -1,0 +1,23 @@
+services:
+  agent-tests:
+    image: rust:1.87-bookworm
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "
+      rustup toolchain install nightly &&
+      rustup component add rust-src --toolchain nightly &&
+      cargo install bpf-linker &&
+      cargo test -p agent --tests
+      "
+
+  ingest-tests:
+    image: golang:1.25-bookworm
+    working_dir: /workspace/services/ingest
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "
+      go test ./...
+      "

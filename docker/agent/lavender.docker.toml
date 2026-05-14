@@ -1,0 +1,85 @@
+[agent]
+agent_id = "docker-agent-1"
+tenant_id = "dev"
+nats_url = "nats://nats:4222"
+telemetry_subject_prefix = "telemetry.raw"
+heartbeat_subject_prefix = "heartbeat"
+heartbeat_interval_secs = 15
+
+[filters]
+safe_shell_launchers = [
+    "tmux", "alacritty", "kitty",
+    "sshd", "sudo", "su", "login",
+    "Hyprland", "code"
+]
+
+ignored_comms = [
+    "cpuUsage.sh"
+]
+
+safe_file_readers = [
+    "sshd",
+    "sudo",
+    "passwd",
+    "shadow",
+    "pam",
+    "bash",
+    "zsh",
+    "sh",
+    "code",
+    "vim",
+    "nvim",
+    "nano"
+]
+
+shell_names = [
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "dash"
+]
+
+sensitive_files = [
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/sudoers",
+    "/etc/sudoers.d",
+    "/.ssh/id_rsa",
+    "/.ssh/id_ed25519",
+    "/.ssh/authorized_keys",
+    "/.bash_history",
+    "/.zsh_history",
+    "/root/.ssh"
+]
+
+suspicious_ports = [
+    4444,
+    1337,
+    9001,
+    9999,
+    6666,
+    31337,
+    5555
+]
+
+noisy_comms = [
+    "code",
+    "cpuUsage",
+    "cargo",
+    "rustc",
+    "make"
+]
+
+correlator_max_events = 20
+correlator_max_age_secs = 30
+
+[response]
+dry_run = true
+kill_threshold = 200
+protected_comms = [
+    "systemd",
+    "sshd",
+    "sudo",
+    "init"
+]

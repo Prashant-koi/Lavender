@@ -7,13 +7,17 @@ Files:
 - `compose.yml`
   - starts a local `NATS / JetStream` broker for telemetry and heartbeat testing
 
-## Start
+## Start Broker Only
 
 From repository root:
 
 ```bash
 docker compose -f docker/nats/compose.yml up -d
 ```
+
+For the full local stack instead, see:
+
+- [../compose/README.md](../compose/README.md)
 
 ## Check Telemetry
 

@@ -1,0 +1,10 @@
+.git
+.gitignore
+
+target
+agent/target
+common/target
+
+**/.DS_Store
+**/*.log
+
