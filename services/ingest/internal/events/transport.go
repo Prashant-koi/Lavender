@@ -12,7 +12,7 @@ type AgentTelemetryEvent struct {
 }
 
 type HostInfo struct {
-	HostName string `json:"host_name"`
+	Hostname string `json:"hostname"`
 }
 
 type TransportEventKind struct {

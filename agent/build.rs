@@ -6,6 +6,15 @@ use std::fs;
 fn main() {
     // we will tell cargo that if ebpf source changes, rerun this build script
     println!("cargo:rerun-if-changed=../lavender-ebpf/src/main.rs");
+    println!("cargo:rerun-if-env-changed=LAVENDER_PREBUILT_EBPF_PATH");
+
+    if let Ok(prebuilt) = env::var("LAVENDER_PREBUILT_EBPF_PATH") {
+        let out = PathBuf::from(prebuilt)
+            .canonicalize()
+            .expect("prebuilt lavender-ebpf artifact not found");
+        println!("cargo:rustc-env=LAVENDER_EBPF_PATH={}", out.display());
+        return;
+    }
 
     // compile the eBPF crate for the bpf target using nightly toolchain.
     // Build scripts inherit RUSTC from the parent cargo invocation, so we

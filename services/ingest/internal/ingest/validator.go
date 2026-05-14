@@ -1,0 +1,35 @@
+package ingest
+
+import (
+	"errors"
+	"strings"
+
+	"github.com/Prashant-koi/lavender/ingest/internal/events"
+)
+
+func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {
+	// check schema version and all other fileds sicne they all required
+	if evt.SchemaVersion == 0 {
+		return errors.New("missing schema_version")
+	}
+
+	if strings.TrimSpace(evt.AgentID) == "" {
+		return errors.New("missing agent_id")
+	}
+
+	if strings.TrimSpace(evt.Host.Hostname) == "" {
+		return errors.New("missing host.hostname")
+	}
+
+	if evt.ObservedAtUnixMs == 0 {
+		return errors.New("missing observered_at_unix_ms")
+	}
+
+	switch evt.Event.Type {
+	case "exec", "heartbeat":
+		return nil
+	default:
+		return errors.New("unsupported Event Type")
+	}
+
+}
