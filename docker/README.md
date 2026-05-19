@@ -1,20 +1,20 @@
 # Docker Dev Services
 
-This directory holds local development containers used by Lavender infrastructure.
+This directory holds the local container workflows for Lavender infrastructure and agent testing.
 
-Current services:
+## Current Pieces
+- `nats/compose.yml`: broker-only workflow for local NATS
+- `agent/`: Docker build and runtime config for the Rust agent
+- `ingest/`: Docker build for the Go ingest service
+- `telemetry-writer/`: Docker build for the canonical telemetry consumer
+- `compose/README.md`: full stack and test workflows
 
-- `nats/compose.yml`
-  - local `NATS / JetStream` broker for agent telemetry and heartbeat testing
-- `agent/`
-  - Docker build and runtime config for the Rust eBPF agent
-- `ingest/`
-  - Docker build for the Go ingest service
-- `compose/README.md`
-  - full local stack and test compose workflows
+## Current Full Stack
+The root `docker-compose.yml` starts:
 
-The goal of this directory is to keep root clean from all the cultter that might come in the future, such as:
+- `nats`
+- `ingest`
+- `telemetry-writer`
+- `agent`
 
-- PostgreSQL / TimescaleDB
-- Redis
-- control-plane or ingest dev dependencies
+Planned infra such as PostgreSQL, TimescaleDB, Redis, and control-plane services are not in the compose stack yet.

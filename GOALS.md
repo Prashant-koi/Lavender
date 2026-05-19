@@ -1,7 +1,10 @@
 # Feature Goals
-Some features I will implement later:
-- Beaconing patterns with regular 30 second callbacks
-    Here we track connection timestamps per process and look for regularity
-- TLS fingerprinting - JA4 and JA4+
-      We will use JA4 format for TLS fingerprinting
-- Add test suites 
+
+These are medium-term goals that are not implemented yet:
+
+- publish more than `exec` and `heartbeat` on the backend transport path
+- add backend detection workers so the Rust agent can become thinner over time
+- persist canonical telemetry to a database instead of only logging shaped rows
+- add beaconing-pattern detection
+- add TLS fingerprinting such as JA4-style metadata
+- expand automated test coverage across the Go services and end-to-end transport path

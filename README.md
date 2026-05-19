@@ -1,35 +1,35 @@
 # Lavender
-Lavender is a userspace EDR (Endpoint Detection and Response) tool built on a full Rust + Aya stack.
+Lavender is an EDR prototype built around a Rust eBPF endpoint agent, a NATS transport layer, and small Go backend services for ingest and telemetry handling.
 
-The project uses:
-- `aya` in userspace (`agent`)
-- `aya-ebpf` in kernel eBPF programs (`lavender-ebpf`)
-- shared Rust event types in `common`
+The repository currently contains two active paths:
+
+- a local detection path inside the Rust `agent`
+- a backend transport path where the agent publishes raw telemetry to NATS and `services/ingest` republishes canonical events
 
 ## Current Features
-- `execve` tracepoint monitoring with process lineage tracking
-- `sched_process_exit` tracepoint monitoring for process tree cleanup
-- `openat` tracepoint monitoring for sensitive file-read detection
-- `connect` tracepoint monitoring for outbound network connection events (IPv4 and IPv6)
-- Per-process short-term correlation buffer (`max_events`, `max_age_secs`)
-- Multi-step correlation rules (reverse-shell chain, cred-access then exec, rapid spawn)
-- Context-aware scoring (base rule + lineage bonus + rare parent-child bonus + sequence bonus)
-- Severity labels (`INFO`, `WARNING`, `HIGH`, `CRITICAL`) derived from total score
-- Active response engine with `dry_run`, `kill_threshold`, and protected-process guards
-- JSON event output stream on stdout and JSON alert stream on stderr
-- Runtime filtering from `lavender.toml`
+- eBPF tracepoints for `execve`, `sched_process_exit`, `openat`, and `connect`
+- local JSON stdout/stderr output for exec events, connection events, alerts, and response actions
+- local detection and correlation for shell spawn, sensitive file read, suspicious port, reverse-shell-style chains, and related scoring/response
+- outbound NATS publishing for raw `exec` telemetry and `heartbeat` events
+- Go ingest service that validates raw transport messages and republishes canonical telemetry
+- Go telemetry-writer service that consumes canonical `exec` events
+- runtime configuration via `lavender.toml`
 
 ## Project Layout
-- `agent`: Rust userspace loader (Aya) that loads/attaches probes and consumes ring buffers
-- `lavender-ebpf`: Rust eBPF probes (Aya eBPF)
-- `common`: shared Rust event structs used by both sides
-- `docker`: local development container definitions for broker and future infra services
-- `lavender.toml`: runtime filtering config
+- `agent`: Rust userspace agent that loads probes, consumes ring buffers, runs local detections, and publishes transport events
+- `lavender-ebpf`: Rust eBPF programs and ring buffer map definitions
+- `common`: shared Rust event structs for the kernel/userspace boundary and transport schema
+- `services/ingest`: Go service that validates raw transport events and republishes canonical telemetry
+- `services/telemetry-writer`: Go service that consumes canonical telemetry and shapes exec rows
+- `docs`: project documentation and implementation notes
+- `docker`: local development container definitions
 
-## Local Dev Infrastructure
-Container-based local development workflows are documented in:
-
-- [docker/compose/README.md](docker/compose/README.md) (for full local deployement check this)
+## Documentation
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+- [docs/EVENT_STREAMS_AND_INTERFACES.md](docs/EVENT_STREAMS_AND_INTERFACES.md)
+- [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/ARCHITECTURE_MIGRATION_PLAN.md](docs/ARCHITECTURE_MIGRATION_PLAN.md)
+- [docker/compose/README.md](docker/compose/README.md)
 - [docker/nats/README.md](docker/nats/README.md)
 
 ## Architecture (Subject to Change)
@@ -74,20 +74,14 @@ validate, rate-limit, timestamp"]
       L --> C
 ```
 
-Agents maintain authenticated outbound connections to `NATS / JetStream`. They publish
-telemetry and heartbeats, and subscribe to per-agent command or policy subjects owned by
-the control plane. The ingest tier consumes raw telemetry from NATS, applies validation,
-rate limits, and server-side timestamps, then emits a canonical event stream. Detection,
-storage, and live dashboard views all derive from that same canonical event stream so the
-live UI and persisted data stay aligned.
+That diagram is the target direction. The current codebase only implements part of it: agent publishing, ingest canonicalization, and a telemetry-writer consumer. Detection workers, control-plane services, storage, and dashboard components are still planned work.
 
 ## Prerequisites
-- Linux kernel with BTF enabled (check if `/sys/kernel/btf/vmlinux` exists)
+- Linux kernel with BTF enabled (`/sys/kernel/btf/vmlinux`)
 - Rust toolchain and `cargo`
-- `rustup` with nightly toolchain
-- nightly `rust-src` component
-- `bpf-linker` installed in PATH
-- sudo or root privileges to load/attach eBPF programs
+- `rustup` nightly toolchain with `rust-src`
+- `bpf-linker` in `PATH`
+- `sudo` or root privileges to attach eBPF programs
 
 Recommended setup:
 
@@ -98,15 +92,15 @@ cargo install bpf-linker
 ```
 
 ## Build
-From repository root, build the userspace agent:
+Build the Rust agent from the repository root:
 
 ```bash
 cargo build --package agent
 ```
 
-During this build, `agent/build.rs` automatically builds `lavender-ebpf` for the BPF target with nightly and embeds the artifact path.
+`agent/build.rs` builds `lavender-ebpf` for the BPF target and embeds the artifact path into the userspace binary.
 
-If you want to build only the eBPF crate directly:
+Build only the eBPF crate directly:
 
 ```bash
 cd lavender-ebpf
@@ -114,42 +108,54 @@ cargo +nightly build --target bpfel-unknown-none -Z build-std=core --release
 ```
 
 ## Tests
-All current tests live under `agent/tests` as integration tests.
-
-Run the full agent test suite from repository root:
+Rust agent tests:
 
 ```bash
 cargo test -p agent --tests
 ```
 
-Run all workspace tests:
+Workspace Rust tests:
 
 ```bash
 cargo test --workspace
 ```
 
-Current test files:
-- `agent/tests/correlator_tests.rs`
-- `agent/tests/detection_tests.rs`
-- `agent/tests/runtime_state_tests.rs`
-- `agent/tests/scorer_tests.rs`
+Go ingest tests:
+
+```bash
+cd services/ingest
+go test ./...
+```
+
+Go telemetry-writer tests:
+
+```bash
+cd services/telemetry-writer
+go test ./...
+```
+
+Containerized test workflow:
+
+```bash
+docker compose -f docker-compose.test.yaml up --build --abort-on-container-exit
+```
+
+Note: `docker-compose.test.yaml` currently runs the Rust agent tests and ingest tests, but not the telemetry-writer tests.
 
 ## Run
-From repository root:
+Build as your normal user:
 
 ```bash
 cargo build --package agent
-sudo ./target/debug/agent
 ```
 
-Build as your normal user, then run the compiled binary with `sudo`.
-Avoid running Cargo itself with `sudo`.
-
-Or run only the binary directly after a prior build:
+Then run the compiled binary with `sudo`:
 
 ```bash
 sudo ./target/debug/agent
 ```
+
+Avoid running Cargo itself with `sudo`.
 
 On success, you should see:
 
@@ -157,94 +163,39 @@ On success, you should see:
 Lavender is watching. Ctrl+C to stop
 ```
 
-## Local Broker
-Local `NATS / JetStream` development setup is documented in:
-
-- [docker/nats/README.md](docker/nats/README.md)
+## Local Broker And Stack
+- broker-only workflow: [docker/nats/README.md](docker/nats/README.md)
+- full local stack: [docker/compose/README.md](docker/compose/README.md)
 
 ## Configuration
-Lavender configuration is documented in:
+Configuration reference:
 
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
-That document covers:
-- available keys in `lavender.toml`
-- config loading order and defaults
-- example config values
-- running with explicit `LAVENDER_CONFIG`
+## Event Streams And Interfaces
+Current stream names, transport subjects, JSON payload shapes, and eBPF map names are documented in:
 
-## Save Output To JSON
-Capture all normal events to `events.json` and alerts to `alerts.json`:
-
-```bash
-sudo ./target/debug/agent > events.json 2> alerts.json
-```
-
-The preferred runtime command is the compiled binary path:
-
-```bash
-sudo ./target/debug/agent
-```
-
-Capture only alerts to `alerts.json` (discard normal exec stream):
-
-```bash
-sudo ./target/debug/agent 1>/dev/null 2>alerts.json
-```
-
-Capture only alerts and also see them live in terminal:
-
-```bash
-sudo ./target/debug/agent 1>/dev/null 2> >(tee alerts.json >&2)
-```
-
-Note: the default Cargo output path for this package is `./target/debug/agent`.
-
-
-## Why `exec format error` happens? (What I learned)
-`lavender-ebpf` (the BPF target artifact) is an ELF object for the eBPF virtual machine, not a native userspace executable.
-
-It cannot be run directly.
-It must be loaded by the Rust userspace loader (`agent`) through Aya.
-
-## Event Streams And Map Names
-The userspace loader reads from four ring buffer maps:
-- `EXEC_EVENTS`: process exec events (`pid`, `ppid`, `comm`, `filename`)
-- `EXIT_EVENTS`: process exit events (`pid`)
-- `OPEN_EVENTS`: file-open events (`pid`, `comm`, `filename`)
-- `CONN_EVENTS`: network-connect events (`pid`, `comm`, `dest_ip`, `dest_port`, `af`)
-
-Output JSON `type` values currently emitted:
-- `exec`
-- `conn`
-- `alert`
-
-Response events are emitted as JSON on stderr with `kind: "response"`.
-
-Scored alerts also include optional score breakdown fields:
-- `base_score`
-- `lineage_bonus`
-- `rarity_bonus`
-- `sequence_bonus`
-
-Alert rules currently emitted:
-- `T1059 [Unexpected shell spawn]`
-- `T1003 [Sensitive file read]`
-- `T1071 [Connection to suspicious port]`
-- `T1059 [Shell making outbound connection]`
-- `T1071 [First time Network Caller]`
-- `CHAIN Reverse shell behaviour`
-- `CHAIN Credential access then execution`
-- `CHAIN Rapid process spawning`
-
-Current eBPF map/program names are defined in `lavender-ebpf/src/main.rs`.
+- [docs/EVENT_STREAMS_AND_INTERFACES.md](docs/EVENT_STREAMS_AND_INTERFACES.md)
 
 ## Development Notes
-- Build with your normal user account, run the binary with `sudo`.
-- A quick local verification loop is:
+- Build the agent as a normal user and run only the compiled binary with `sudo`.
+- The agent still performs local detection and active-response decisions itself.
+- The backend transport path currently publishes only `exec` and `heartbeat` events.
+- `open`, `connect`, and `exit` events are still handled locally and are not yet emitted on the NATS transport path.
+- For realistic host telemetry, run `nats` and `ingest` in Docker and run the Rust agent on the host against `nats://127.0.0.1:4222`.
+- For quick end-to-end verification:
 
 ```bash
 cargo test -p agent --tests
 cargo build --package agent
+docker compose up --build -d nats ingest telemetry-writer
 sudo ./target/debug/agent
+```
+
+In another terminal, subscribe to the subject families you care about:
+
+```bash
+nats sub "telemetry.raw.>"
+nats sub "telemetry.accepted.>"
+nats sub "heartbeat.>"
 ```

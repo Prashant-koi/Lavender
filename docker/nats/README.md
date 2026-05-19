@@ -1,26 +1,17 @@
-# Local NATS / JetStream
+# Local NATS
 
-This directory contains the local development setup for the Lavender broker.
-
-Files:
-
-- `compose.yml`
-  - starts a local `NATS / JetStream` broker for telemetry and heartbeat testing
+This directory contains the broker-only development setup for Lavender.
 
 ## Start Broker Only
-
-From repository root:
+From the repository root:
 
 ```bash
 docker compose -f docker/nats/compose.yml up -d
 ```
 
-For the full local stack instead, see:
+For the full local stack instead, see [../compose/README.md](../compose/README.md).
 
-- [../compose/README.md](../compose/README.md)
-
-## Check Telemetry
-
+## Check Subjects
 Subscribe to raw telemetry:
 
 ```bash
@@ -33,10 +24,16 @@ Subscribe to heartbeats:
 nats sub "heartbeat.>"
 ```
 
-Current subject conventions:
+Subscribe to canonical telemetry republished by ingest:
 
+```bash
+nats sub "telemetry.accepted.>"
+```
+
+## Current Subject Conventions
 - `telemetry.raw.<tenant>.<agent_id>`
 - `heartbeat.<tenant>.<agent_id>`
+- `telemetry.accepted.<tenant>.<agent_id>`
 
 ## Stop
 
