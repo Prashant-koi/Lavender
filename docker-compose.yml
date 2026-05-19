@@ -20,6 +20,17 @@ services:
       - nats
     restart: on-failure
 
+  telemetry-writer:
+    build:
+      context: .
+      dockerfile: docker/telemetry-writer/Dockerfile
+    container_name: lavender-telemetry-writer
+    environment:
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
+    restart: on-failure
+
   agent:
     build:
       context: .
