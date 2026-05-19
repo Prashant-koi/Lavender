@@ -26,7 +26,21 @@ func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {
 	}
 
 	switch evt.Event.Type {
-	case "exec", "heartbeat":
+	case "exec":
+		if evt.Event.PID == 0 {
+			return errors.New("missing exec pid")
+		}
+		if strings.TrimSpace(evt.Event.Comm) == "" {
+			return errors.New("Missisng exec comm")
+		}
+		if strings.TrimSpace(evt.Event.Filename) == "" {
+			return errors.New("missing exec filename")
+		}
+		return nil
+	case "heartbeat":
+		if strings.TrimSpace(evt.Event.Status) == "" {
+			return errors.New("missing heartbeat status")
+		}
 		return nil
 	default:
 		return errors.New("unsupported Event Type")

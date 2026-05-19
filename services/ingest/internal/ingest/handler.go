@@ -19,12 +19,12 @@ func HandleTransportMessage(
 	//decode
 	var raw events.AgentTelemetryEvent
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return "", nil, fmt.Errorf("invalid json on %s : %v", subject, err)
+		return "", nil, fmt.Errorf("invalid json on %s : %w", subject, err)
 	}
 
 	//validate
 	if err := ValidateTransportEvents(raw); err != nil {
-		return "", nil, fmt.Errorf("couldn't validate on %s : %v", subject, err)
+		return "", nil, fmt.Errorf("couldn't validate on %s : %w", subject, err)
 	}
 
 	//we will now convert the raw transpoet events ino the canonical backend ebent
@@ -42,7 +42,7 @@ func HandleTransportMessage(
 
 	payload, err := json.Marshal(canonical)
 	if err != nil {
-		return "", nil, fmt.Errorf("Matshall of Canonical failed: %v", err)
+		return "", nil, fmt.Errorf("Matshall of Canonical failed: %w", err)
 	}
 
 	return acceptedSubj, payload, nil

@@ -73,6 +73,45 @@ func TestValidateTransportEvents_MissingObservedAt(t *testing.T) {
 	}
 }
 
+func TestValidateTransportEvents_MissingExecPID(t *testing.T) {
+	evt := validExecEvent()
+	evt.Event.PID = 0
+
+	if err := ValidateTransportEvents(evt); err == nil {
+		t.Fatal("expected missing exec pid to fail validation")
+	}
+}
+
+func TestValidateTransportEvents_MissingExecComm(t *testing.T) {
+	evt := validExecEvent()
+	evt.Event.Comm = ""
+
+	if err := ValidateTransportEvents(evt); err == nil {
+		t.Fatal("expected missing exec comm to fail validation")
+	}
+}
+
+func TestValidateTransportEvents_MissingExecFilename(t *testing.T) {
+	evt := validExecEvent()
+	evt.Event.Filename = ""
+
+	if err := ValidateTransportEvents(evt); err == nil {
+		t.Fatal("expected missing exec filename to fail validation")
+	}
+}
+
+func TestValidateTransportEvents_MissingHeartbeatStatus(t *testing.T) {
+	evt := validExecEvent()
+	evt.Event = events.TransportEventKind{
+		Type:   "heartbeat",
+		Status: "",
+	}
+
+	if err := ValidateTransportEvents(evt); err == nil {
+		t.Fatal("expected missing heartbeat status to fail validation")
+	}
+}
+
 func TestValidateTransportEvents_UnsupportedType(t *testing.T) {
 	evt := validExecEvent()
 	evt.Event.Type = "weird_event"
