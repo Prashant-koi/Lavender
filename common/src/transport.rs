@@ -22,6 +22,8 @@ pub struct HostInfo {
 pub enum TransportEventKind {
     Exec(ExecTransportEvent),
     Heartbeat(HeartbeatTransportEvent),
+    Open(OpenTransportEvent),
+    Conn(ConnectTransportEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,4 +39,21 @@ pub struct ExecTransportEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatTransportEvent {
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenTransportEvent {
+    pub pid: u32,
+    pub comm: String,
+    pub filename: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectTransportEvent {
+    pub pid: u32,
+    pub uid: u32,
+    pub comm: String,
+    pub daddr: [u8; 16], // destination port
+    pub dport: u16, // destination port
+    pub af: u16, // address family
 }
