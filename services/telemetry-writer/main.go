@@ -31,16 +31,39 @@ func main() {
 			return
 		}
 
-		log.Printf(
-			"exec row agent = %s host = %s pid = %d ppid = %d comm = %s file = %s argv = %q",
-			row.AgentID,
-			row.Hostname,
-			row.PID,
-			row.PPID,
-			row.Comm,
-			row.Filename,
-			row.Argv,
-		)
+		switch row.EventType {
+		case "exec":
+			log.Printf(
+				"exec row agent = %s host = %s pid = %d ppid = %d comm = %s file = %s argv = %q",
+				row.AgentID,
+				row.Hostname,
+				row.PID,
+				row.PPID,
+				row.Comm,
+				row.Filename,
+				row.Argv,
+			)
+		case "open":
+			log.Printf(
+				"open row agent = %s host = %s pid = %d comm = %s file = %s",
+				row.AgentID,
+				row.Hostname,
+				row.PID,
+				row.Comm,
+				row.Filename,
+			)
+		case "connect":
+			log.Printf(
+				"connect row agent = %s host = %s pid = %d comm = %s dest = %s:%d af = %d",
+				row.AgentID,
+				row.Hostname,
+				row.PID,
+				row.Comm,
+				row.DestIP,
+				row.DestPort,
+				row.AF,
+			)
+		}
 	})
 	if err != nil {
 		log.Fatal(err)

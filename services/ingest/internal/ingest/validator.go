@@ -37,11 +37,37 @@ func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {
 			return errors.New("missing exec filename")
 		}
 		return nil
+
 	case "heartbeat":
 		if strings.TrimSpace(evt.Event.Status) == "" {
 			return errors.New("missing heartbeat status")
 		}
 		return nil
+
+	case "open":
+		if evt.Event.PID == 0 {
+			return errors.New("missing open pid")
+		}
+		if strings.TrimSpace(evt.Event.Comm) == "" {
+			return errors.New("missing open comm")
+		}
+		if strings.TrimSpace(evt.Event.Filename) == "" {
+			return errors.New("missing open filename")
+		}
+		return nil
+
+	case "connect":
+		if evt.Event.PID == 0 {
+			return errors.New("missing connect pid")
+		}
+		if strings.TrimSpace(evt.Event.Comm) == "" {
+			return errors.New("missing connect comm")
+		}
+		if strings.TrimSpace(evt.Event.DestIP) == "" {
+			return errors.New("missing connect dest_ip")
+		}
+		return nil
+
 	default:
 		return errors.New("unsupported Event Type")
 	}

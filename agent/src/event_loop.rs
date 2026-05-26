@@ -133,6 +133,26 @@ pub async fn run(
                         &mut state,
                         &config,
                     );
+
+                    // Publish after open handling so local runtime can still use its fallback
+                    // path, transport uses parent ppid from the eBPF agent now
+                    let transport_event = crate::transport::open_to_transport_event(
+                        event,
+                        &config.agent.agent_id,
+                        &config.agent.tenant_id,
+                        &hostname,
+                        now_unix_ms(),
+                    );
+
+                    //publish
+                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
+                        if let Err(err) = publisher
+                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .await
+                        {
+                            eprintln!("failed to publish telemetry: {err}");
+                        }
+                    }
                 }
 
                 guard.clear_ready();
@@ -156,6 +176,26 @@ pub async fn run(
                         &user_db,
                         &config,
                     );
+
+                    // Publish after connect handling so local runtime can still use its fallback
+                    // path, transport uses parent ppid from the eBPF agent now
+                    let transport_event = crate::transport::connect_to_transport_event(
+                        event,
+                        &config.agent.agent_id,
+                        &config.agent.tenant_id,
+                        &hostname,
+                        now_unix_ms(),
+                    );
+
+                    //publish
+                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
+                        if let Err(err) = publisher
+                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .await
+                        {
+                            eprintln!("failed to publish telemetry: {err}");
+                        }
+                    }
                 }
 
                 guard.clear_ready();

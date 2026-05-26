@@ -23,7 +23,7 @@ pub enum TransportEventKind {
     Exec(ExecTransportEvent),
     Heartbeat(HeartbeatTransportEvent),
     Open(OpenTransportEvent),
-    Conn(ConnectTransportEvent),
+    Connect(ConnectTransportEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub struct ConnectTransportEvent {
     pub pid: u32,
     pub uid: u32,
     pub comm: String,
-    pub daddr: [u8; 16], // destination port
-    pub dport: u16, // destination port
+    pub dest_ip: String, // destination ip
+    pub dest_port: u16, // destination port
     pub af: u16, // address family
 }

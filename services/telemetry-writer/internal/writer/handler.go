@@ -8,7 +8,8 @@ import (
 	"github.com/Prashant-koi/lavender/telemetry-writer/internal/events"
 )
 
-type ExecRow struct {
+type CanonicalRow struct {
+	EventType        string
 	AgentID          string
 	TenantID         string
 	Hostname         string
@@ -20,16 +21,15 @@ type ExecRow struct {
 	Comm             string
 	Filename         string
 	Argv             string
+	DestIP           string
+	DestPort         uint16
+	AF               uint16
 }
 
-func HandleCanonicalMessage(subject string, data []byte) (*ExecRow, error) {
+func HandleCanonicalMessage(subject string, data []byte) (*CanonicalRow, error) {
 	var evt events.CanonicalEvent
 	if err := json.Unmarshal(data, &evt); err != nil {
 		return nil, fmt.Errorf("invalid canonical json on %s : %w", subject, err)
-	}
-
-	if evt.Event.Type != "exec" { // TODO: might need to change this later
-		return nil, nil
 	}
 
 	tenantID := "unknown"
@@ -37,7 +37,8 @@ func HandleCanonicalMessage(subject string, data []byte) (*ExecRow, error) {
 		tenantID = *evt.TenantID
 	}
 
-	row := &ExecRow{
+	row := &CanonicalRow{
+		EventType:        evt.Event.Type,
 		AgentID:          evt.AgentID,
 		TenantID:         tenantID,
 		Hostname:         evt.Host.Hostname,
@@ -49,7 +50,15 @@ func HandleCanonicalMessage(subject string, data []byte) (*ExecRow, error) {
 		Comm:             evt.Event.Comm,
 		Filename:         evt.Event.Filename,
 		Argv:             strings.Join(evt.Event.Argv, " "),
+		DestIP:           evt.Event.DestIP,
+		DestPort:         evt.Event.DestPort,
+		AF:               evt.Event.AF,
 	}
 
-	return row, nil
+	switch evt.Event.Type {
+	case "exec", "open", "connect":
+		return row, nil
+	default:
+		return nil, nil
+	}
 }

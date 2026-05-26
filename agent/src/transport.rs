@@ -1,13 +1,16 @@
+use crate::output::format::format_ip;
 use common::transport::{
     AgentTelemetryEvent,
+    ConnectTransportEvent,
     ExecTransportEvent,
     HeartbeatTransportEvent,
     HostInfo,
+    OpenTransportEvent,
     TransportEventKind,
 };
-use common::ExecEvent;
+use common::{ConnEvent, ExecEvent, OpenEvent};
 
-//for now only gonna make one for exec events as a starating point
+//exec events transport
 pub fn exec_to_transport_event(
     event: &ExecEvent,
     agent_id: &str,
@@ -54,6 +57,57 @@ pub fn heartbeat_transport_event(
         observed_at_unix_ms,
         event: TransportEventKind::Heartbeat(HeartbeatTransportEvent {
             status: "alive".to_string(),
+        }),
+    }
+}
+
+//open events transport
+pub fn open_to_transport_event(
+    event: &OpenEvent,
+    agent_id: &str,
+    tenant_id: &str,
+    hostname: &str,
+    observed_at_unix_ms: u64,
+) -> AgentTelemetryEvent {
+    AgentTelemetryEvent {
+        schema_version: 1,
+        agent_id: agent_id.to_string(),
+        tenant_id: Some(tenant_id.to_string()),
+        host: HostInfo {
+            hostname: hostname.to_string(),
+        },
+        observed_at_unix_ms,
+        event: TransportEventKind::Open(OpenTransportEvent {
+            pid: event.pid,
+            comm: bytes_to_string(&event.comm),
+            filename: bytes_to_string(&event.filename),
+        }),
+    }
+}
+
+//connect event transport
+pub fn connect_to_transport_event(
+    event: &ConnEvent,
+    agent_id: &str,
+    tenant_id: &str,
+    hostname: &str,
+    observed_at_unix_ms: u64,
+) -> AgentTelemetryEvent {
+    AgentTelemetryEvent {
+        schema_version: 1,
+        agent_id: agent_id.to_string(),
+        tenant_id: Some(tenant_id.to_string()),
+        host: HostInfo {
+            hostname: hostname.to_string(),
+        },
+        observed_at_unix_ms,
+        event: TransportEventKind::Connect(ConnectTransportEvent {
+            pid: event.pid,
+            uid: event.uid,
+            comm: bytes_to_string(&event.comm),
+            dest_ip: format_ip(event),
+            dest_port: event.dport,
+            af: event.af,
         }),
     }
 }

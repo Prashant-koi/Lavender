@@ -24,4 +24,7 @@ type TransportEventKind struct {
 	Filename string   `json:"filename,omitempty"`
 	Argv     []string `json:"argv,omitempty"`
 	Status   string   `json:"status,omitempty"`
+	DestIP   string   `json:"dest_ip,omitempty"`
+	DestPort uint16   `json:"dest_port,omitempty"`
+	AF       uint16   `json:"af,omitempty"`
 }
