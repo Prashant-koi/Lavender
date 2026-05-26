@@ -107,6 +107,52 @@ cd lavender-ebpf
 cargo +nightly build --target bpfel-unknown-none -Z build-std=core --release
 ```
 
+## Docker Build And Run
+Build and run the full local stack from the repository root:
+
+```bash
+docker compose up --build
+```
+
+This builds and starts:
+
+- `nats`
+- `ingest`
+- `telemetry-writer`
+- `agent`
+
+Run it in the background:
+
+```bash
+docker compose up --build -d
+```
+
+Watch logs:
+
+```bash
+docker compose logs -f nats ingest telemetry-writer agent
+```
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+Start only the local NATS broker:
+
+```bash
+docker compose -f docker/nats/compose.yml up -d
+```
+
+Run the containerized test workflow:
+
+```bash
+docker compose -f docker-compose.test.yaml up --build --abort-on-container-exit
+```
+
+More detail is in [docker/compose/README.md](docker/compose/README.md) and [docker/nats/README.md](docker/nats/README.md).
+
 ## Tests
 Rust agent tests:
 
