@@ -9,6 +9,19 @@ services:
     volumes:
       - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
 
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: lavender-timescale
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: lavender
+      POSTGRES_PASSWORD: lavender
+      POSTGRES_DB: lavender
+    volumes:
+      - lavender-db-data:/var/lib/postgresql/data
+    
+
   ingest:
     build:
       context: .
@@ -46,3 +59,6 @@ services:
       - /sys/fs/bpf:/sys/fs/bpf
       - /sys/kernel/tracing:/sys/kernel/tracing
       - /sys/kernel/debug:/sys/kernel/debug
+
+volumes:
+  lavender-db-data:
