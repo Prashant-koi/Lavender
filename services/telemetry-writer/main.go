@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -20,6 +21,20 @@ func main() {
 	}
 	defer nc.Close()
 
+	// connect to db
+	ctx := context.Background()
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
+	store, err := writer.NewStore(ctx, databaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to postgres: %v", err)
+	}
+	defer store.Close()
+
 	_, err = nc.Subscribe("telemetry.accepted.>", func(msg *nats.Msg) {
 		row, err := writer.HandleCanonicalMessage(msg.Subject, msg.Data)
 		if err != nil {
@@ -28,6 +43,12 @@ func main() {
 		}
 
 		if row == nil {
+			return
+		}
+
+		//inser to db
+		if err := store.InsertCanonicalRow(ctx, row); err != nil {
+			log.Printf("insert error: %v", err)
 			return
 		}
 

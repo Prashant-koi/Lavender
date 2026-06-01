@@ -41,8 +41,10 @@ services:
     container_name: lavender-telemetry-writer
     environment:
       - NATS_URL=nats://nats:4222
+      - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
     depends_on:
       - nats
+      - timescaledb
     restart: on-failure
 
   agent:
