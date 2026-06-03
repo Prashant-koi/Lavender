@@ -47,6 +47,18 @@ services:
       - timescaledb
     restart: on-failure
 
+  detection:
+    build:
+      context: .
+      dockerfile: docker/detection/Dockerfile
+    container_name: lavender-detection
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      - nats
+      - ingest
+    restart: on-failure
+
   agent:
     build:
       context: .
