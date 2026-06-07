@@ -1,4 +1,4 @@
-module github.com/Prashant-koi/lavender/platform
+module github.com/Prashant-koi/lavender/services/platform
 
 go 1.25.0
 
