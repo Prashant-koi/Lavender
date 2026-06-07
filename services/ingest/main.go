@@ -1,27 +1,27 @@
 package main
 
 import (
-	"context"
 	"log"
-	"os"
 	"time"
 
 	"github.com/Prashant-koi/lavender/ingest/internal/ingest"
+	"github.com/Prashant-koi/lavender/services/platform/env"
+	"github.com/Prashant-koi/lavender/services/platform/natsx"
+	"github.com/Prashant-koi/lavender/services/platform/shutdown"
 	nats "github.com/nats-io/nats.go"
 )
 
 func main() {
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = "nats://127.0.0.1:4222"
-	}
+	natsURL := env.Default("NATS_URL", "nats://127.0.0.1:4222")
 
-	// connect
-	nc, err := nats.Connect(natsURL)
+	nc, err := natsx.Connect(natsURL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer nc.Close()
+	defer nc.Drain()
+
+	ctx, stop := shutdown.Context()
+	defer stop()
 
 	// we will subscribe to every raw telemetry from our agents
 	// telemetry.raw.<tenant>.<agent_id> for self reference
@@ -54,5 +54,5 @@ func main() {
 	}
 
 	log.Println("ingest service listening on telemetry.raw.>")
-	<-context.Background().Done()
+	<-ctx.Done()
 }

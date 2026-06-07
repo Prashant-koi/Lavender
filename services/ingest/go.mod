@@ -2,7 +2,10 @@ module github.com/Prashant-koi/lavender/ingest
 
 go 1.25.0
 
-require github.com/nats-io/nats.go v1.52.0
+require (
+	github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff
+	github.com/nats-io/nats.go v1.52.0
+)
 
 require (
 	github.com/klauspost/compress v1.18.5 // indirect
