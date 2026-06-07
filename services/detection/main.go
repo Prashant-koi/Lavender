@@ -3,24 +3,26 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"os"
 	"time"
 
 	"github.com/Prashant-koi/lavender/detection/internal/detection"
+	"github.com/Prashant-koi/lavender/services/platform/env"
+	"github.com/Prashant-koi/lavender/services/platform/natsx"
+	"github.com/Prashant-koi/lavender/services/platform/shutdown"
 	nats "github.com/nats-io/nats.go"
 )
 
 func main() {
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = "nats://127.0.0.1:4222"
-	}
+	natsURL := env.Default("NATS_URL", "nats://127.0.0.1:4222")
 
-	nc, err := nats.Connect(natsURL)
+	nc, err := natsx.Connect(natsURL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer nc.Close()
+	defer nc.Drain()
+
+	ctx, stop := shutdown.Context()
+	defer stop()
 
 	detector := detection.NewDetector()
 
@@ -56,5 +58,5 @@ func main() {
 	}
 
 	log.Println("detection service listening on telemetry.accepted.>")
-	select {}
+	<-ctx.Done()
 }
