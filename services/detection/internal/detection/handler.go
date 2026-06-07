@@ -17,6 +17,9 @@ func HandleCanonicalMessage(subject string, data []byte) ([]AlertEvent, error) {
 	if alert := suspiciousPortAlert(evt); alert != nil {
 		alerts = append(alerts, *alert)
 	}
+	if alert := sensitiveFileAlert(evt); alert != nil {
+		alerts = append(alerts, *alert)
+	}
 
 	return alerts, nil
 }
