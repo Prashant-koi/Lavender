@@ -2,6 +2,7 @@ FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app/services/telemetry-writer
 COPY services/telemetry-writer/go.mod services/telemetry-writer/go.sum ./
+COPY services/platform /app/services/platform
 RUN go mod download
 
 COPY services/telemetry-writer ./

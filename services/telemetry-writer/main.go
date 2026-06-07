@@ -1,32 +1,30 @@
 package main
 
 import (
-	"context"
 	"log"
-	"os"
 
+	"github.com/Prashant-koi/lavender/services/platform/env"
+	"github.com/Prashant-koi/lavender/services/platform/natsx"
+	"github.com/Prashant-koi/lavender/services/platform/shutdown"
 	"github.com/Prashant-koi/lavender/telemetry-writer/internal/writer"
 	nats "github.com/nats-io/nats.go"
 )
 
 func main() {
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = "nats://127.0.0.1:4222"
-	}
+	natsURL := env.Default("NATS_URL", "nats://127.0.0.1:4222")
 
-	nc, err := nats.Connect(natsURL)
+	nc, err := natsx.Connect(natsURL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer nc.Close()
+	defer nc.Drain()
 
-	// connect to db
-	ctx := context.Background()
+	ctx, stop := shutdown.Context()
+	defer stop()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
+	databaseURL, err := env.Required("DATABASE_URL")
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	store, err := writer.NewStore(ctx, databaseURL)
@@ -91,5 +89,5 @@ func main() {
 	}
 
 	log.Println("telemetry writer listening on telemetry.accepted.>")
-	select {}
+	<-ctx.Done()
 }
