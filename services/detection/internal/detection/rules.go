@@ -92,6 +92,36 @@ func suspiciousPortAlert(evt events.CanonicalEvent) *AlertEvent {
 	return &alert
 }
 
+func shellNetworkConnectionAlert(evt events.CanonicalEvent) *AlertEvent {
+	if evt.Event.Type != "connect" {
+		return nil
+	}
+
+	if !equalsAny(evt.Event.Comm, shellNames) {
+		return nil
+	}
+
+	if strings.HasPrefix(evt.Event.DestIP, "127.") || evt.Event.DestIP == "::1" {
+		return nil
+	}
+
+	detail := fmt.Sprintf(
+		"'%s' opened network connection to %s:%d",
+		evt.Event.Comm,
+		evt.Event.DestIP,
+		evt.Event.DestPort,
+	)
+
+	alert := newAlert(
+		evt,
+		"T1059 [Shell making outbound connection]",
+		"high",
+		detail,
+	)
+
+	return &alert
+}
+
 func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *AlertEvent {
 	if evt.Event.Type != "exec" {
 		return nil

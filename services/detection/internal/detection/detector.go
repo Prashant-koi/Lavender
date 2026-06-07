@@ -23,6 +23,9 @@ func (d *Detector) processEvent(evt events.CanonicalEvent) []AlertEvent {
 	if alert := suspiciousPortAlert(evt); alert != nil {
 		alerts = append(alerts, *alert)
 	}
+	if alert := shellNetworkConnectionAlert(evt); alert != nil {
+		alerts = append(alerts, *alert)
+	}
 	if alert := sensitiveFileAlert(evt); alert != nil {
 		alerts = append(alerts, *alert)
 	}
