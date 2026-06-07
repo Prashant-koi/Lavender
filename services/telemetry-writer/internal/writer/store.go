@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Prashant-koi/lavender/services/platform/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -13,14 +14,9 @@ type Store struct {
 
 // create the connection pool and ping
 func NewStore(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	pool, err := postgres.Connect(ctx, databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("create postgres pool error: %w", err)
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping postgres error: %w", err)
+		return nil, err
 	}
 
 	return &Store{pool: pool}, nil
