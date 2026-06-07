@@ -8,18 +8,17 @@ import (
 )
 
 func HandleCanonicalMessage(subject string, data []byte) ([]AlertEvent, error) {
+	return NewDetector().HandleCanonicalMessage(subject, data)
+}
+
+func (d *Detector) HandleCanonicalMessage(subject string, data []byte) ([]AlertEvent, error) {
 	var evt events.CanonicalEvent
 	if err := json.Unmarshal(data, &evt); err != nil {
 		return nil, fmt.Errorf("invalid canonical json on %s: %w", subject, err)
 	}
 
-	var alerts []AlertEvent
-	if alert := suspiciousPortAlert(evt); alert != nil {
-		alerts = append(alerts, *alert)
-	}
-	if alert := sensitiveFileAlert(evt); alert != nil {
-		alerts = append(alerts, *alert)
-	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	return alerts, nil
+	return d.processEvent(evt), nil
 }

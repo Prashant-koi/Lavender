@@ -22,8 +22,10 @@ func main() {
 	}
 	defer nc.Close()
 
+	detector := detection.NewDetector()
+
 	_, err = nc.Subscribe("telemetry.accepted.>", func(msg *nats.Msg) {
-		alerts, err := detection.HandleCanonicalMessage(msg.Subject, msg.Data) // get the alerts
+		alerts, err := detector.HandleCanonicalMessage(msg.Subject, msg.Data) // get the alerts
 		if err != nil {
 			log.Printf("detection error: %v", err)
 			return

@@ -2,6 +2,7 @@ package detection
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Prashant-koi/lavender/detection/internal/events"
@@ -45,6 +46,26 @@ var safeFileReaders = []string{
 	"nano",
 }
 
+var shellNames = []string{
+	"bash",
+	"sh",
+	"zsh",
+	"fish",
+	"dash",
+}
+
+var safeShellLaunchers = []string{
+	"tmux",
+	"alacritty",
+	"kitty",
+	"sshd",
+	"sudo",
+	"su",
+	"login",
+	"Hyprland",
+	"code",
+}
+
 func suspiciousPortAlert(evt events.CanonicalEvent) *AlertEvent {
 	if evt.Event.Type != "connect" {
 		return nil
@@ -64,6 +85,36 @@ func suspiciousPortAlert(evt events.CanonicalEvent) *AlertEvent {
 	alert := newAlert(
 		evt,
 		"T1071 [Connection to suspicious port]",
+		"warning",
+		detail,
+	)
+
+	return &alert
+}
+
+func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *AlertEvent {
+	if evt.Event.Type != "exec" {
+		return nil
+	}
+
+	targetBase := filepath.Base(evt.Event.Filename)
+	if !equalsAny(targetBase, shellNames) {
+		return nil
+	}
+
+	parentComm := d.processes[evt.Event.PPID]
+	if parentComm == "" {
+		parentComm = "unknown"
+	}
+
+	if containsAny(parentComm, safeShellLaunchers) || containsAny(parentComm, shellNames) {
+		return nil
+	}
+
+	detail := fmt.Sprintf("'%s' executed shell target (%s)", parentComm, targetBase)
+	alert := newAlert(
+		evt,
+		"T1059 [Unexpected shell spawn]",
 		"warning",
 		detail,
 	)
@@ -98,6 +149,16 @@ func sensitiveFileAlert(evt events.CanonicalEvent) *AlertEvent {
 func containsAny(value string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if strings.Contains(value, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func equalsAny(value string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if value == pattern {
 			return true
 		}
 	}
