@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     received_at TIMESTAMPTZ,
     observed_at_unix_ms BIGINT NOT NULL,
     received_at_unix_ms BIGINT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',
+    status TEXT NOT NULL DEFAULT 'open', -- will add this later in control plane will have 4 differnt types (open/pending/resolved/dismissed) the menings of each are obvious
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
