@@ -59,6 +59,20 @@ services:
       - ingest
     restart: on-failure
 
+  alert-writer:
+    build: 
+      context: .
+      dockerfile: docker/alert-writer/Dockerfile
+    container_name: lavender-alert-writer
+    environment:
+      - NATS_URL=nats://nats:4222
+      - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
+    depends_on:
+      - nats
+      - timescaledb
+      - detection
+    restart: on-failure
+
   agent:
     build:
       context: .
