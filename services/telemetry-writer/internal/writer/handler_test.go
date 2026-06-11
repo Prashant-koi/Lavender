@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Prashant-koi/lavender/telemetry-writer/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 func TestHandleCanonicalMessageExec(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Prashant-koi/lavender/telemetry-writer/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 type CanonicalRow struct {
