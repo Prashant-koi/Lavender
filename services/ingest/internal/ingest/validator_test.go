@@ -3,7 +3,7 @@ package ingest
 import (
 	"testing"
 
-	"github.com/Prashant-koi/lavender/ingest/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 func validExecEvent() events.AgentTelemetryEvent {

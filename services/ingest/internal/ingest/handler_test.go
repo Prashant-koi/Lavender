@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Prashant-koi/lavender/ingest/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 func TestHandleTransportMessageExec(t *testing.T) {

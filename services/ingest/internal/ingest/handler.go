@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Prashant-koi/lavender/ingest/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 // we just take in the subject the raw data and the time fuinction

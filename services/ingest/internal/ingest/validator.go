@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Prashant-koi/lavender/ingest/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {

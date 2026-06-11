@@ -3,7 +3,7 @@ package ingest
 import (
 	"fmt"
 
-	"github.com/Prashant-koi/lavender/ingest/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 func CanonicalSubject(evt events.AgentTelemetryEvent) string {
