@@ -73,6 +73,20 @@ services:
       - detection
     restart: on-failure
 
+  control-plane:
+    build: 
+      context: .
+      dockerfile: docker/control-plane/Dockerfile
+    container_name: lavender-control-plane
+    environment:
+      - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
+      - HTTP_ADDR=:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - timescaledb
+    restart: on-failure
+
   agent:
     build:
       context: .
