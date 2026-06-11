@@ -1,5 +1,7 @@
 FROM golang:1.25-bookworm AS builder
 
+COPY services/platform /app/services/platform
+
 WORKDIR /app/services/alert-writer
 COPY services/alert-writer/go.mod services/alert-writer/go.sum ./
 RUN go mod download

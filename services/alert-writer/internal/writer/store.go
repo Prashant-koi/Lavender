@@ -3,11 +3,16 @@ package writer
 import (
 	"context"
 
-	"github.com/Prashant-koi/lavender/alert-writer/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func InsertAlert(ctx context.Context, db *pgxpool.Pool, alert events.AlertEvent) error {
+	tenantID := "unknown"
+	if alert.TenantID != nil && *alert.TenantID != "" {
+		tenantID = *alert.TenantID
+	}
+
 	_, err := db.Exec(ctx, `
 		INSERT INTO alerts (
 			alert_id,
@@ -41,14 +46,14 @@ func InsertAlert(ctx context.Context, db *pgxpool.Pool, alert events.AlertEvent)
 		)
 	`,
 		alert.AlertID,
-		alert.TenantID,
+		tenantID,
 		alert.AgentID,
 		alert.Rule,
 		alert.Severity,
 		alert.Detail,
 		alert.EventType,
-		alert.EventPID,
-		alert.EventComm,
+		alert.PID,
+		alert.Comm,
 		alert.ObservedAtUnixMs,
 		alert.ReceivedAtUnixMs,
 	)

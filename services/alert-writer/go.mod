@@ -3,7 +3,7 @@ module github.com/Prashant-koi/lavender/alert-writer
 go 1.25.0
 
 require (
-	github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff
+	github.com/Prashant-koi/lavender/services/platform v0.0.0-20260611223406-a2d3c962028c
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/nats-io/nats.go v1.52.0
 )

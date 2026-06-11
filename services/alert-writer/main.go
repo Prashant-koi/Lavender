@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/Prashant-koi/lavender/alert-writer/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 	"github.com/Prashant-koi/lavender/alert-writer/internal/writer"
 	"github.com/Prashant-koi/lavender/services/platform/env"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
