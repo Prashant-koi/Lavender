@@ -1,5 +1,7 @@
 github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff h1:0ZNJ46/HIPehtwV91Kyt86eTQCcXTl6bPC8MJr8B8GU=
 github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff/go.mod h1:bJTxOKpp9zXHoKD/L3SEijQagjiIZ+fs1hcG0C0j6pM=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
 github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/nats-io/nats.go v1.52.0 h1:n3avV4VBsCgsdwh71TppsTwtv+QdPs7ntSKM8qJLGsc=
