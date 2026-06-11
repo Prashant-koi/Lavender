@@ -4,6 +4,7 @@ package events
 // like it name (canonical) all services like the detection, telemetry-writer and anythign else will consume this
 type CanonicalEvent struct {
 	SchemaVersion    uint16             `json:"schema_version"`
+	EventID          string             `json:"event_id"` // gonna be the uuid
 	AgentID          string             `json:"agent_id"`
 	TenantID         *string            `json:"tenant_id"`
 	Host             HostInfo           `json:"host"`
