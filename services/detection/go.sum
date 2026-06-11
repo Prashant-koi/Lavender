@@ -1,5 +1,5 @@
-github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff h1:0ZNJ46/HIPehtwV91Kyt86eTQCcXTl6bPC8MJr8B8GU=
-github.com/Prashant-koi/lavender/services/platform v0.0.0-20260607214144-b1c8100512ff/go.mod h1:bJTxOKpp9zXHoKD/L3SEijQagjiIZ+fs1hcG0C0j6pM=
+github.com/Prashant-koi/lavender/services/platform v0.0.0-20260611223406-a2d3c962028c h1:lkINygyPWoNV7KfizsFdVfC+OeBCX+4VzCvYeFR+Jwk=
+github.com/Prashant-koi/lavender/services/platform v0.0.0-20260611223406-a2d3c962028c/go.mod h1:bJTxOKpp9zXHoKD/L3SEijQagjiIZ+fs1hcG0C0j6pM=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=

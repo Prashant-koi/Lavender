@@ -3,7 +3,7 @@ package detection
 import (
 	"fmt"
 
-	"github.com/Prashant-koi/lavender/detection/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 type eventKind string
@@ -22,7 +22,7 @@ type bufferedEvent struct {
 	timestamp int64
 }
 
-func (d *Detector) pushCorrelatedEvent(evt events.CanonicalEvent) *AlertEvent {
+func (d *Detector) pushCorrelatedEvent(evt events.CanonicalEvent) *events.AlertEvent {
 	buffered, ok := eventToBuffer(evt)
 	if !ok {
 		return nil
@@ -70,7 +70,7 @@ func pruneBuffer(buf []bufferedEvent, nowUnixMs int64) []bufferedEvent {
 	return buf[firstFresh:]
 }
 
-func (d *Detector) credentialAccessThenExecutionAlert(evt events.CanonicalEvent, buf []bufferedEvent) *AlertEvent {
+func (d *Detector) credentialAccessThenExecutionAlert(evt events.CanonicalEvent, buf []bufferedEvent) *events.AlertEvent {
 	if evt.Event.Type != "exec" {
 		return nil
 	}

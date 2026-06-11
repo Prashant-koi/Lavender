@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Prashant-koi/lavender/detection/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 var suspiciousPorts = map[uint16]struct{}{
@@ -66,7 +66,7 @@ var safeShellLaunchers = []string{
 	"code",
 }
 
-func suspiciousPortAlert(evt events.CanonicalEvent) *AlertEvent {
+func suspiciousPortAlert(evt events.CanonicalEvent) *events.AlertEvent {
 	if evt.Event.Type != "connect" {
 		return nil
 	}
@@ -92,7 +92,7 @@ func suspiciousPortAlert(evt events.CanonicalEvent) *AlertEvent {
 	return &alert
 }
 
-func shellNetworkConnectionAlert(evt events.CanonicalEvent) *AlertEvent {
+func shellNetworkConnectionAlert(evt events.CanonicalEvent) *events.AlertEvent {
 	if evt.Event.Type != "connect" {
 		return nil
 	}
@@ -122,7 +122,7 @@ func shellNetworkConnectionAlert(evt events.CanonicalEvent) *AlertEvent {
 	return &alert
 }
 
-func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *AlertEvent {
+func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *events.AlertEvent {
 	if evt.Event.Type != "exec" {
 		return nil
 	}
@@ -152,7 +152,7 @@ func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *AlertEv
 	return &alert
 }
 
-func sensitiveFileAlert(evt events.CanonicalEvent) *AlertEvent {
+func sensitiveFileAlert(evt events.CanonicalEvent) *events.AlertEvent {
 	if evt.Event.Type != "open" {
 		return nil
 	}

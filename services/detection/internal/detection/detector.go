@@ -3,7 +3,7 @@ package detection
 import (
 	"sync"
 
-	"github.com/Prashant-koi/lavender/detection/internal/events"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 )
 
 type Detector struct {
@@ -21,8 +21,8 @@ func NewDetector() *Detector {
 	}
 }
 
-func (d *Detector) processEvent(evt events.CanonicalEvent) []AlertEvent {
-	var alerts []AlertEvent
+func (d *Detector) processEvent(evt events.CanonicalEvent) []events.AlertEvent {
+	var alerts []events.AlertEvent
 
 	if alert := suspiciousPortAlert(evt); alert != nil {
 		alerts = append(alerts, *alert)
