@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	databaseURL, err := env.Required("DATABASEURL")
+	databaseURL, err := env.Required("DATABASE_URL")
 	if err != nil {
 		log.Fatal(err)
 	}

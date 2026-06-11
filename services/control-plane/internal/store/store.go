@@ -50,9 +50,9 @@ func (s *Store) ListAlerts(ctx context.Context, filter AlertFilter) ([]models.Al
 				status,
 				created_at
 			FROM alerts
-			WHERE (&1 = '' OR tenant_id = $1)
-			AND   (&2 = '' OR agent_id = $2)
-			AND	  (&3 = '' OR status = $3)
+				WHERE ($1 = '' OR tenant_id = $1)
+				AND   ($2 = '' OR agent_id = $2)
+				AND	  ($3 = '' OR status = $3)
 			ORDER BY received_at DESC NULLS LAST, id DESC
 			LIMIT $4
 	`,
@@ -118,12 +118,11 @@ func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) 
 			event_comm,
 			observed_at,
 			received_at,
-			observed_at_unix_ms,
-			received_at_unix_ms,
-			status,
-			created_at
-			
-	`,
+				observed_at_unix_ms,
+				received_at_unix_ms,
+				status,
+				created_at
+		`,
 		id,
 		status,
 	).Scan(
