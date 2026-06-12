@@ -7,7 +7,7 @@ import (
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
 	"github.com/Prashant-koi/lavender/telemetry-writer/internal/writer"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func main() {
@@ -33,22 +33,42 @@ func main() {
 	}
 	defer store.Close()
 
-	_, err = nc.Subscribe("telemetry.accepted.>", func(msg *nats.Msg) {
-		row, err := writer.HandleCanonicalMessage(msg.Subject, msg.Data)
+	js, err := natsx.JetStream(nc)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	canonicalStream, err := natsx.EnsureStream(ctx, js, natsx.TelemetryCanonicalStream)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	consumer, err := natsx.EnsureDurableConsumer(ctx, canonicalStream, "telemetry-writer")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+		row, err := writer.HandleCanonicalMessage(msg.Subject(), msg.Data())
 		if err != nil {
 			log.Printf("writer error: %v", err)
+			msg.Term()
 			return
 		}
 
 		if row == nil {
+			msg.Ack()
 			return
 		}
 
 		//inser to db
 		if err := store.InsertCanonicalRow(ctx, row); err != nil {
 			log.Printf("insert error: %v", err)
+			msg.Nak()
 			return
 		}
+
+		msg.Ack()
 
 		switch row.EventType {
 		case "exec":
@@ -87,7 +107,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer cc.Stop()
 
-	log.Println("telemetry writer listening on telemetry.accepted.>")
+	log.Println("telemetry writer consuming durable 'telemetry-writer' on stream TELEMETRY_CANONICAL")
 	<-ctx.Done()
 }

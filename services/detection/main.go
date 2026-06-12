@@ -3,13 +3,12 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"time"
 
 	"github.com/Prashant-koi/lavender/detection/internal/detection"
 	"github.com/Prashant-koi/lavender/services/platform/env"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func main() {
@@ -24,12 +23,33 @@ func main() {
 	ctx, stop := shutdown.Context()
 	defer stop()
 
+	js, err := natsx.JetStream(nc)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// we read canonical events and publish alerts, so ensure both streams
+	canonicalStream, err := natsx.EnsureStream(ctx, js, natsx.TelemetryCanonicalStream)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := natsx.EnsureStream(ctx, js, natsx.AlertsStream); err != nil {
+		log.Fatal(err)
+	}
+
+	consumer, err := natsx.EnsureDurableConsumer(ctx, canonicalStream, "detection")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	detector := detection.NewDetector()
 
-	_, err = nc.Subscribe("telemetry.accepted.>", func(msg *nats.Msg) {
-		alerts, err := detector.HandleCanonicalMessage(msg.Subject, msg.Data) // get the alerts
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+		alerts, err := detector.HandleCanonicalMessage(msg.Subject(), msg.Data()) // get the alerts
 		if err != nil {
+			// invalid canonical json
 			log.Printf("detection error: %v", err)
+			msg.Term()
 			return
 		}
 
@@ -40,23 +60,24 @@ func main() {
 				continue
 			}
 
+			// alert_id is deterministic per event_id, rule so if this canonical gets redelivered the dedup will shwlalo repeat publish
 			subject := detection.AlertSubject(alert)
-			if err := nc.Publish(subject, payload); err != nil {
+			if _, err := js.Publish(ctx, subject, payload, jetstream.WithMsgID(alert.AlertID)); err != nil {
 				log.Printf("alert publish failed on %s: %v", subject, err)
-				continue
-			}
-			if err := nc.FlushTimeout(2 * time.Second); err != nil {
-				log.Printf("alert flush failed on %s: %v", subject, err)
-				continue
+				msg.Nak() // retry canonical
+				return
 			}
 
 			log.Printf("published alert %s rule = %q pid = %d comm = %s", subject, alert.Rule, alert.PID, alert.Comm)
 		}
+
+		msg.Ack()
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer cc.Stop()
 
-	log.Println("detection service listening on telemetry.accepted.>")
+	log.Println("detection service consuming durable 'detection' on stream TELEMETRY_CANONICAL")
 	<-ctx.Done()
 }

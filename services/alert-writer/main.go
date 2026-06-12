@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/Prashant-koi/lavender/services/platform/events"
 	"github.com/Prashant-koi/lavender/alert-writer/internal/writer"
 	"github.com/Prashant-koi/lavender/services/platform/env"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/postgres"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func main() {
@@ -35,26 +35,44 @@ func main() {
 	}
 	defer nc.Drain()
 
-	sub, err := nc.Subscribe("alerts.>", func(msg *nats.Msg) {
+	js, err := natsx.JetStream(nc)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	alertsStream, err := natsx.EnsureStream(ctx, js, natsx.AlertsStream)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	consumer, err := natsx.EnsureDurableConsumer(ctx, alertsStream, "alert-writer")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
 		var alert events.AlertEvent
-		if err := json.Unmarshal(msg.Data, &alert); err != nil {
-			log.Printf("invalid alert payload on %s : %v", msg.Subject, err)
+		if err := json.Unmarshal(msg.Data(), &alert); err != nil {
+			log.Printf("invalid alert payload on %s : %v", msg.Subject(), err)
+			msg.Term()
 			return
 		}
 
 		if err := writer.InsertAlert(ctx, db, alert); err != nil {
 			log.Printf("insert alert failed: %v", err)
+			msg.Nak() // db hiccup we will let jetstream redeliver
 			return
 		}
 
+		msg.Ack()
 		log.Printf("stored alert %s rule = %q severity = %s", alert.AlertID, alert.Rule, alert.Severity)
 	})
 	if err != nil {
-		log.Fatalf("subscribe alerts: %v", err)
+		log.Fatalf("consume alerts: %v", err)
 	}
-	defer sub.Unsubscribe()
+	defer cc.Stop()
 
-	log.Printf("alert-writer subscribed to alerts.>")
+	log.Printf("alert-writer consuming durable 'alert-writer' on stream ALERTS")
 
 	<-ctx.Done()
 	log.Printf("alert-writer shutting down")
