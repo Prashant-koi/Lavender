@@ -9,6 +9,7 @@ import (
 func validExecEvent() events.AgentTelemetryEvent {
 	tenant := "dev"
 	return events.AgentTelemetryEvent{
+		EventID:          "11111111-2222-3333-4444-555555555555",
 		SchemaVersion:    1,
 		AgentID:          "agent-1",
 		TenantID:         &tenant,

@@ -8,7 +8,7 @@ import (
 	"github.com/Prashant-koi/lavender/services/platform/env"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func main() {
@@ -23,36 +23,63 @@ func main() {
 	ctx, stop := shutdown.Context()
 	defer stop()
 
-	// we will subscribe to every raw telemetry from our agents
-	// telemetry.raw.<tenant>.<agent_id> for self reference
-	_, err = nc.Subscribe("telemetry.raw.>", func(msg *nats.Msg) {
-
-		// call the function that decodes the raw and makes it in form
-		// of canonical event
-		// the subject here is the acceptedSubj return in the HandleTransportMessage fucntion defn
-		subject, payload, err := ingest.HandleTransportMessage(
-			msg.Subject,
-			msg.Data,
-			func() int64 { return time.Now().UnixMilli() },
-		)
-
-		if err != nil {
-			log.Printf("%v", err)
-			return
-		}
-
-		// we will finally republished to our internal stream
-		if err := nc.Publish(subject, payload); err != nil {
-			log.Printf("republish failed of %s : %v", subject, err)
-			return
-		}
-
-		log.Printf("accepeted and republished %s => %s", msg.Subject, subject)
-	})
+	js, err := natsx.JetStream(nc)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Println("ingest service listening on telemetry.raw.>")
+	// we consume the raw stream and publish into the canonical one,
+	// so make sure both exist before any message moves
+	rawStream, err := natsx.EnsureStream(ctx, js, natsx.TelemetryRawStream)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := natsx.EnsureStream(ctx, js, natsx.TelemetryCanonicalStream); err != nil {
+		log.Fatal(err)
+	}
+
+	consumer, err := natsx.EnsureDurableConsumer(ctx, rawStream, "ingest")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// telemetry.raw.<tenant>.<agent_id> for self reference
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+
+		// call the function that decodes the raw and makes it in form
+		// of canonical event
+		// the subject here is the acceptedSubj return in the HandleTransportMessage fucntion defn
+		subject, payload, eventID, err := ingest.HandleTransportMessage(
+			msg.Subject(),
+			msg.Data(),
+			func() int64 { return time.Now().UnixMilli() },
+		)
+
+		if err != nil {
+			// bad payloads will never get better, terminate so jetstream
+			// does not redeliver them
+			log.Printf("%v", err)
+			msg.Term()
+			return
+		}
+
+		// we will finally republish to the canonical stream, event_id doubles
+		// as the dedup msg id so a redelivered raw message can't produce two
+		// canonical events
+		if _, err := js.Publish(ctx, subject, payload, jetstream.WithMsgID(eventID)); err != nil {
+			log.Printf("republish failed of %s : %v", subject, err)
+			msg.Nak() // transient failure, let jetstream redeliver
+			return
+		}
+
+		msg.Ack()
+		log.Printf("accepeted and republished %s => %s", msg.Subject(), subject)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cc.Stop()
+
+	log.Println("ingest service consuming durable 'ingest' on stream TELEMETRY_RAW")
 	<-ctx.Done()
 }

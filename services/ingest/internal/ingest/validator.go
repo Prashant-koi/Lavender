@@ -13,6 +13,10 @@ func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {
 		return errors.New("missing schema_version")
 	}
 
+	if strings.TrimSpace(evt.EventID) == "" {
+		return errors.New("missing event_id")
+	}
+
 	if strings.TrimSpace(evt.AgentID) == "" {
 		return errors.New("missing agent_id")
 	}

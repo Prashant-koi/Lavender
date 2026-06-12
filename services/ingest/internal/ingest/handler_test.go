@@ -12,6 +12,7 @@ func TestHandleTransportMessageExec(t *testing.T) {
 	tenant := "dev"
 
 	raw := events.AgentTelemetryEvent{
+		EventID:       "11111111-2222-3333-4444-555555555555",
 		SchemaVersion: 1,
 		AgentID:       "agent-1",
 		TenantID:      &tenant,
@@ -35,7 +36,7 @@ func TestHandleTransportMessageExec(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subject, payload, err := HandleTransportMessage(
+	subject, payload, _, err := HandleTransportMessage(
 		"telemetry.raw.dev.agent-1",
 		data,
 		func() int64 { return now },
@@ -67,6 +68,7 @@ func TestHandleTransportMessageHeartbeat(t *testing.T) {
 	tenant := "dev"
 
 	raw := events.AgentTelemetryEvent{
+		EventID:       "11111111-2222-3333-4444-555555555555",
 		SchemaVersion: 1,
 		AgentID:       "agent-2",
 		TenantID:      &tenant,
@@ -85,7 +87,7 @@ func TestHandleTransportMessageHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subject, payload, err := HandleTransportMessage(
+	subject, payload, _, err := HandleTransportMessage(
 		"telemetry.raw.dev.agent-2",
 		data,
 		func() int64 { return now },
@@ -113,7 +115,7 @@ func TestHandleTransportMessageHeartbeat(t *testing.T) {
 }
 
 func TestHandleTransportMessageInvalidJSON(t *testing.T) {
-	_, _, err := HandleTransportMessage(
+	_, _, _, err := HandleTransportMessage(
 		"telemetry.raw.dev.agent-1",
 		[]byte(`{"bad_json":`),
 		func() int64 { return 1 },
@@ -125,6 +127,7 @@ func TestHandleTransportMessageInvalidJSON(t *testing.T) {
 
 func TestHandleTransportMessageValidationFailure(t *testing.T) {
 	raw := events.AgentTelemetryEvent{
+		EventID:       "11111111-2222-3333-4444-555555555555",
 		SchemaVersion: 1,
 		AgentID:       "",
 		Host: events.HostInfo{
@@ -141,7 +144,7 @@ func TestHandleTransportMessageValidationFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = HandleTransportMessage(
+	_, _, _, err = HandleTransportMessage(
 		"telemetry.raw.dev.agent-1",
 		data,
 		func() int64 { return 1 },

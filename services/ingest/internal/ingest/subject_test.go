@@ -9,6 +9,7 @@ import (
 func TestCanonicalSubject_WithTenant(t *testing.T) {
 	tenant := "dev"
 	evt := events.AgentTelemetryEvent{
+		EventID:  "11111111-2222-3333-4444-555555555555",
 		AgentID:  "agent-1",
 		TenantID: &tenant,
 	}
@@ -23,6 +24,7 @@ func TestCanonicalSubject_WithTenant(t *testing.T) {
 
 func TestCanonicalSubject_WithoutTenant(t *testing.T) {
 	evt := events.AgentTelemetryEvent{
+		EventID:  "11111111-2222-3333-4444-555555555555",
 		AgentID:  "agent-1",
 		TenantID: nil,
 	}
