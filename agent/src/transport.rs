@@ -3,6 +3,7 @@ use common::transport::{
     AgentTelemetryEvent,
     ConnectTransportEvent,
     ExecTransportEvent,
+    ExitTransportEvent,
     HeartbeatTransportEvent,
     HostInfo,
     OpenTransportEvent,
@@ -113,6 +114,27 @@ pub fn connect_to_transport_event(
             dest_port: event.dport,
             af: event.af,
         }),
+    }
+}
+
+//exit event transport
+pub fn exit_to_transport_event(
+    pid: u32,
+    agent_id: &str,
+    tenant_id: &str,
+    hostname: &str,
+    observed_at_unix_ms: u64,
+) -> AgentTelemetryEvent {
+    AgentTelemetryEvent {
+        schema_version: 1,
+        event_id: uuid::Uuid::new_v4().to_string(),
+        agent_id: agent_id.to_string(),
+        tenant_id: Some(tenant_id.to_string()),
+        host: HostInfo {
+            hostname: hostname.to_string(),
+        },
+        observed_at_unix_ms,
+        event: TransportEventKind::Exit(ExitTransportEvent { pid }),
     }
 }
 

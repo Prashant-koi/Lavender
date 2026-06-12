@@ -147,14 +147,23 @@ fn current_ppid() -> Result<u32, i64> {
 
 #[tracepoint]
 pub fn handle_exit(_ctx: TracePointContext) -> i32 {
+    let id = bpf_get_current_pid_tgid();
+    let tgid = (id >> 32) as u32;
+    let tid = id as u32;
+
+    // sched_process_exit fires for evry thread that exits, not just the process
+    // emitting on just the worker-thread exit would evict state for a process that is still alive 
+    // so we only report when the main thread (tid == tgid) goes down which indicates the death of the actual process
+    if tid != tgid {
+        return 0;
+    }
+
     let mut slot = match EXIT_EVENTS.reserve::<ExitEvent>(0) {
         Some(s) => s,
         None    => return 0,
     };
 
-    let id = bpf_get_current_pid_tgid();
-    let pid = (id >> 32) as u32;
-    unsafe { (*slot.as_mut_ptr()).pid = pid; }
+    unsafe { (*slot.as_mut_ptr()).pid = tgid; }
 
     slot.submit(0);
     0

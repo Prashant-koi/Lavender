@@ -132,7 +132,9 @@ func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *events.
 		return nil
 	}
 
-	parentComm := d.processes[evt.Event.PPID]
+	// parent lookup is scoped to the same tenant+agent, a pid from another
+	// host must never count as this process's parent
+	parentComm := d.processes[keyFor(evt, evt.Event.PPID)]
 	if parentComm == "" {
 		parentComm = "unknown"
 	}

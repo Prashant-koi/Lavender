@@ -28,14 +28,14 @@ func (d *Detector) pushCorrelatedEvent(evt events.CanonicalEvent) *events.AlertE
 		return nil
 	}
 
-	pid := evt.Event.PID
-	buf := d.buffers[pid]
+	key := keyFor(evt, evt.Event.PID)
+	buf := d.buffers[key]
 	buf = pruneBuffer(buf, evt.ReceivedAtUnixMs)
 	buf = append(buf, buffered)
 	if len(buf) > d.maxEvents {
 		buf = buf[len(buf)-d.maxEvents:]
 	}
-	d.buffers[pid] = buf
+	d.buffers[key] = buf
 
 	return d.credentialAccessThenExecutionAlert(evt, buf)
 }

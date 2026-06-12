@@ -111,6 +111,26 @@ pub async fn run(
 
                     // Cleanup removes pid from process tree, correlator and scorer.
                     exit_handler::handle_event(pid, &mut state);
+
+                    // Exits also go to the backend so detection workers can evict
+                    // their own per-pid state instead of tracking dead pids forever
+                    let transport_event = crate::transport::exit_to_transport_event(
+                        pid,
+                        &config.agent.agent_id,
+                        &config.agent.tenant_id,
+                        &hostname,
+                        now_unix_ms(),
+                    );
+
+                    //publish
+                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
+                        if let Err(err) = publisher
+                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
+                            .await
+                        {
+                            eprintln!("failed to publish telemetry: {err}");
+                        }
+                    }
                 }
 
                 guard.clear_ready();

@@ -60,6 +60,12 @@ func ValidateTransportEvents(evt events.AgentTelemetryEvent) error {
 		}
 		return nil
 
+	case "exit":
+		if evt.Event.PID == 0 {
+			return errors.New("missing exit pid")
+		}
+		return nil
+
 	case "connect":
 		if evt.Event.PID == 0 {
 			return errors.New("missing connect pid")

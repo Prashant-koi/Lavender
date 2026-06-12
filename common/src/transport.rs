@@ -25,6 +25,12 @@ pub enum TransportEventKind {
     Heartbeat(HeartbeatTransportEvent),
     Open(OpenTransportEvent),
     Connect(ConnectTransportEvent),
+    Exit(ExitTransportEvent),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExitTransportEvent {
+    pub pid: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
