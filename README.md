@@ -1,5 +1,5 @@
 # Lavender
-A distributed endpoint detection & response (EDR) system — Rust/eBPF agent, NATS JetStream transport, and horizontally-scalable stateless detection workers with externalized correlation state.
+A distributed endpoint detection & response (EDR) system with Rust/eBPF agent, NATS JetStream transport, and horizontally-scalable stateless detection workers with externalized correlation state.
 
 ## Current Features
 - eBPF tracepoints for `execve`, `sched_process_exit`, `openat`, and `connect`
