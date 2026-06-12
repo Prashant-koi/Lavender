@@ -1,10 +1,5 @@
 # Lavender
-Lavender is an EDR prototype built around a Rust eBPF endpoint agent, a NATS transport layer, and small Go backend services for ingest and telemetry handling.
-
-The repository currently contains two active paths:
-
-- a local detection path inside the Rust `agent`
-- a backend transport path where the agent publishes raw telemetry to NATS and `services/ingest` republishes canonical events
+A distributed endpoint detection & response (EDR) system — Rust/eBPF agent, NATS JetStream transport, and horizontally-scalable stateless detection workers with externalized correlation state.
 
 ## Current Features
 - eBPF tracepoints for `execve`, `sched_process_exit`, `openat`, and `connect`
