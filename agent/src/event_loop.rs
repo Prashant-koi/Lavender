@@ -87,7 +87,7 @@ pub async fn run(
                     //publish
                     if let Ok(payload) = serde_json::to_vec(&transport_event) {
                         if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
                             .await
                         {
                             eprintln!("failed to publish telemetry: {err}");
@@ -147,7 +147,7 @@ pub async fn run(
                     //publish
                     if let Ok(payload) = serde_json::to_vec(&transport_event) {
                         if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
                             .await
                         {
                             eprintln!("failed to publish telemetry: {err}");
@@ -190,7 +190,7 @@ pub async fn run(
                     //publish
                     if let Ok(payload) = serde_json::to_vec(&transport_event) {
                         if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, payload)
+                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
                             .await
                         {
                             eprintln!("failed to publish telemetry: {err}");

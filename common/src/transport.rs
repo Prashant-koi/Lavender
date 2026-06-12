@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTelemetryEvent {
     pub schema_version: u16,
+    pub event_id: String, // this is the agent generated uuid and will let the backend dedup redeliveries
     pub agent_id: String,
     pub tenant_id: Option<String>,
     pub host: HostInfo,

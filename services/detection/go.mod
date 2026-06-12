@@ -3,7 +3,7 @@ module github.com/Prashant-koi/lavender/detection
 go 1.25.0
 
 require (
-	github.com/Prashant-koi/lavender/services/platform v0.0.0-20260611223406-a2d3c962028c
+	github.com/Prashant-koi/lavender/services/platform v0.0.0-20260612003026-78ffd437d2f9
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.52.0
 )

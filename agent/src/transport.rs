@@ -20,6 +20,7 @@ pub fn exec_to_transport_event(
 ) -> AgentTelemetryEvent {
     AgentTelemetryEvent {
         schema_version: 1,
+        event_id: uuid::Uuid::new_v4().to_string(),
         agent_id: agent_id.to_string(),
         tenant_id: Some(tenant_id.to_string()),
         host: HostInfo {
@@ -49,6 +50,7 @@ pub fn heartbeat_transport_event(
 ) -> AgentTelemetryEvent {
     AgentTelemetryEvent {
         schema_version: 1,
+        event_id: uuid::Uuid::new_v4().to_string(),
         agent_id: agent_id.to_string(),
         tenant_id: Some(tenant_id.to_string()),
         host: HostInfo {
@@ -71,6 +73,7 @@ pub fn open_to_transport_event(
 ) -> AgentTelemetryEvent {
     AgentTelemetryEvent {
         schema_version: 1,
+        event_id: uuid::Uuid::new_v4().to_string(),
         agent_id: agent_id.to_string(),
         tenant_id: Some(tenant_id.to_string()),
         host: HostInfo {
@@ -95,6 +98,7 @@ pub fn connect_to_transport_event(
 ) -> AgentTelemetryEvent {
     AgentTelemetryEvent {
         schema_version: 1,
+        event_id: uuid::Uuid::new_v4().to_string(),
         agent_id: agent_id.to_string(),
         tenant_id: Some(tenant_id.to_string()),
         host: HostInfo {

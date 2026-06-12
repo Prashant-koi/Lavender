@@ -8,6 +8,7 @@ services:
       - "8222:8222"
     volumes:
       - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - lavender-nats-data:/data
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -105,3 +106,4 @@ services:
 
 volumes:
   lavender-db-data:
+  lavender-nats-data:
