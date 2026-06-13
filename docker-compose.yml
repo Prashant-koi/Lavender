@@ -99,10 +99,13 @@ services:
     container_name: lavender-control-plane
     environment:
       - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
+      - NATS_URL=nats://nats:4222
       - HTTP_ADDR=:8080
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
+      nats:
+        condition: service_started
       timescaledb:
         condition: service_healthy
     restart: on-failure
