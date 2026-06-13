@@ -3,18 +3,20 @@ services:
     image: nats:2.10
     container_name: lavender-nats
     command: ["-c", "/etc/nats/nats-server.conf"]
+    # Bound to localhost only
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     volumes:
       - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
       - lavender-nats-data:/data
+    restart: unless-stopped
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     container_name: lavender-timescale
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: lavender
       POSTGRES_PASSWORD: lavender
@@ -22,7 +24,15 @@ services:
     volumes:
       - lavender-db-data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
-    
+    # we need to gate dependents on this so they don't crash loop while Postgres runs its
+    # init scripts for first timw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lavender -d lavender"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   ingest:
     build:
@@ -32,7 +42,8 @@ services:
     environment:
       NATS_URL: nats://nats:4222
     depends_on:
-      - nats
+      nats:
+        condition: service_started
     restart: on-failure
 
   telemetry-writer:
@@ -44,8 +55,10 @@ services:
       - NATS_URL=nats://nats:4222
       - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
     depends_on:
-      - nats
-      - timescaledb
+      nats:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
     restart: on-failure
 
   detection:
@@ -56,12 +69,14 @@ services:
     environment:
       NATS_URL: nats://nats:4222
     depends_on:
-      - nats
-      - ingest
+      nats:
+        condition: service_started
+      ingest:
+        condition: service_started
     restart: on-failure
 
   alert-writer:
-    build: 
+    build:
       context: .
       dockerfile: docker/alert-writer/Dockerfile
     container_name: lavender-alert-writer
@@ -69,13 +84,16 @@ services:
       - NATS_URL=nats://nats:4222
       - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
     depends_on:
-      - nats
-      - timescaledb
-      - detection
+      nats:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
+      detection:
+        condition: service_started
     restart: on-failure
 
   control-plane:
-    build: 
+    build:
       context: .
       dockerfile: docker/control-plane/Dockerfile
     container_name: lavender-control-plane
@@ -83,9 +101,10 @@ services:
       - DATABASE_URL=postgres://lavender:lavender@timescaledb:5432/lavender?sslmode=disable
       - HTTP_ADDR=:8080
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
-      - timescaledb
+      timescaledb:
+        condition: service_healthy
     restart: on-failure
 
   agent:
@@ -95,8 +114,10 @@ services:
     container_name: lavender-agent
     privileged: true
     depends_on:
-      - nats
-      - ingest
+      nats:
+        condition: service_started
+      ingest:
+        condition: service_started
     restart: on-failure
     volumes:
       - /sys/kernel/btf:/sys/kernel/btf:ro
