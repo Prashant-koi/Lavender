@@ -30,10 +30,20 @@ Subscribe to canonical telemetry republished by ingest:
 nats sub "telemetry.accepted.>"
 ```
 
+Subscribe to alerts emitted by detection:
+
+```bash
+nats sub "alerts.>"
+```
+
 ## Current Subject Conventions
 - `telemetry.raw.<tenant>.<agent_id>`
 - `heartbeat.<tenant>.<agent_id>`
 - `telemetry.accepted.<tenant>.<agent_id>`
+- `alerts.<tenant>.<agent_id>`
+
+Telemetry and alerts are captured by the JetStream streams `TELEMETRY_RAW`,
+`TELEMETRY_CANONICAL`, and `ALERTS`. Heartbeats stay on core NATS.
 
 ## Stop
 

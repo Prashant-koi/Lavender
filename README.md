@@ -5,17 +5,25 @@ A distributed endpoint detection & response (EDR) system with Rust/eBPF agent, N
 - eBPF tracepoints for `execve`, `sched_process_exit`, `openat`, and `connect`
 - local JSON stdout/stderr output for exec events, connection events, alerts, and response actions
 - local detection and correlation for shell spawn, sensitive file read, suspicious port, reverse-shell-style chains, and related scoring/response
-- outbound NATS publishing for raw `exec` telemetry and `heartbeat` events
+- outbound JetStream publishing for `exec`, `open`, `connect`, and `exit` telemetry plus `heartbeat`, each carrying an agent-generated `event_id`
+- durable, at-least-once backend pipeline over JetStream with message-id dedup
 - Go ingest service that validates raw transport messages and republishes canonical telemetry
-- Go telemetry-writer service that consumes canonical `exec` events
+- Go telemetry-writer service that persists canonical `exec`, `open`, and `connect` events to TimescaleDB
+- Go detection service that evaluates rules and correlation and emits alerts with a deterministic `alert_id`
+- Go alert-writer service that persists alerts idempotently
+- Go control-plane service exposing an alert list / lifecycle HTTP API
 - runtime configuration via `lavender.toml`
 
 ## Project Layout
 - `agent`: Rust userspace agent that loads probes, consumes ring buffers, runs local detections, and publishes transport events
 - `lavender-ebpf`: Rust eBPF programs and ring buffer map definitions
 - `common`: shared Rust event structs for the kernel/userspace boundary and transport schema
+- `services/platform`: shared Go module — NATS/JetStream, Postgres, env, shutdown helpers, and the canonical event schema
 - `services/ingest`: Go service that validates raw transport events and republishes canonical telemetry
-- `services/telemetry-writer`: Go service that consumes canonical telemetry and shapes exec rows
+- `services/telemetry-writer`: Go service that consumes canonical telemetry and writes telemetry rows
+- `services/detection`: Go service that evaluates rules and correlation and emits alerts
+- `services/alert-writer`: Go service that persists alerts to Postgres
+- `services/control-plane`: Go service exposing the alert list and lifecycle HTTP API
 - `docs`: project documentation and implementation notes
 - `docker`: local development container definitions
 
@@ -69,7 +77,7 @@ validate, rate-limit, timestamp"]
       L --> C
 ```
 
-That diagram is the target direction. The current codebase only implements part of it: agent publishing, ingest canonicalization, and a telemetry-writer consumer. Detection workers, control-plane services, storage, and dashboard components are still planned work.
+That diagram is the target direction. The current codebase implements the agent publish path, ingest canonicalization, telemetry persistence, detection workers, alert persistence, and a control-plane alert API. Still planned: edge authentication (NATS auth + TLS), the command/response path back to the agent, heartbeat-driven host liveness, externalized correlation state, and the dashboard.
 
 ## Prerequisites
 - Linux kernel with BTF enabled (`/sys/kernel/btf/vmlinux`)
@@ -112,9 +120,17 @@ docker compose up --build
 This builds and starts:
 
 - `nats`
+- `timescaledb`
 - `ingest`
 - `telemetry-writer`
+- `detection`
+- `alert-writer`
+- `control-plane`
 - `agent`
+
+Host ports (`4222`, `8222`, `5432`, `8080`) are bound to `127.0.0.1` only, so the
+stack is reachable from this host (nats CLI, host-run agent) but not from the
+network. Edge authentication is still planned work.
 
 Run it in the background:
 
@@ -125,7 +141,7 @@ docker compose up --build -d
 Watch logs:
 
 ```bash
-docker compose logs -f nats ingest telemetry-writer agent
+docker compose logs -f nats ingest telemetry-writer detection alert-writer control-plane agent
 ```
 
 Stop the stack:
@@ -220,16 +236,15 @@ Current stream names, transport subjects, JSON payload shapes, and eBPF map name
 
 ## Development Notes
 - Build the agent as a normal user and run only the compiled binary with `sudo`.
-- The agent still performs local detection and active-response decisions itself.
-- The backend transport path currently publishes only `exec` and `heartbeat` events.
-- `open`, `connect`, and `exit` events are still handled locally and are not yet emitted on the NATS transport path.
-- For realistic host telemetry, run `nats` and `ingest` in Docker and run the Rust agent on the host against `nats://127.0.0.1:4222`.
+- The agent still performs local detection and active-response decisions itself, in addition to publishing telemetry to the backend.
+- The backend transport path publishes `exec`, `open`, `connect`, and `exit` telemetry plus `heartbeat`. Nothing consumes heartbeats yet.
+- For realistic host telemetry, run the backend in Docker and run the Rust agent on the host against `nats://127.0.0.1:4222`.
 - For quick end-to-end verification:
 
 ```bash
 cargo test -p agent --tests
 cargo build --package agent
-docker compose up --build -d nats ingest telemetry-writer
+docker compose up --build -d nats timescaledb ingest telemetry-writer detection alert-writer
 sudo ./target/debug/agent
 ```
 
@@ -238,5 +253,12 @@ In another terminal, subscribe to the subject families you care about:
 ```bash
 nats sub "telemetry.raw.>"
 nats sub "telemetry.accepted.>"
+nats sub "alerts.>"
 nats sub "heartbeat.>"
+```
+
+Inspect stored data:
+
+```bash
+docker exec lavender-timescale psql -U lavender -d lavender -c "SELECT rule, severity, event_comm FROM alerts ORDER BY id DESC LIMIT 10;"
 ```

@@ -2,7 +2,7 @@
 
 ## Main Stack
 
-Run the local broker, ingest service, telemetry writer, and eBPF agent:
+Run the local broker, database, backend services, and eBPF agent:
 
 ```bash
 DOCKER_BUILDKIT=1 docker compose up --build
@@ -11,9 +11,16 @@ DOCKER_BUILDKIT=1 docker compose up --build
 This starts:
 
 - `nats`
+- `timescaledb`
 - `ingest`
 - `telemetry-writer`
+- `detection`
+- `alert-writer`
+- `control-plane`
 - `agent`
+
+Host ports are bound to `127.0.0.1` only. `timescaledb` has a healthcheck and the
+Postgres-dependent services wait for it, so they no longer crash-loop on first boot.
 
 To stop and restart cleanly:
 
@@ -27,14 +34,17 @@ DOCKER_BUILDKIT=1 docker compose up --build
 Watch the service logs in another terminal:
 
 ```bash
-docker compose logs -f nats ingest telemetry-writer agent
+docker compose logs -f nats ingest telemetry-writer detection alert-writer control-plane agent
 ```
 
 Healthy startup signals:
 
 - `nats`: `Server is ready`
-- `ingest`: `ingest service listening on telemetry.raw.>`
-- `telemetry-writer`: `telemetry writer listening on telemetry.accepted.>`
+- `ingest`: `ingest service consuming durable 'ingest' on stream TELEMETRY_RAW`
+- `telemetry-writer`: `telemetry writer consuming durable 'telemetry-writer' on stream TELEMETRY_CANONICAL`
+- `detection`: `detection service consuming durable 'detection' on stream TELEMETRY_CANONICAL`
+- `alert-writer`: `alert-writer consuming durable 'alert-writer' on stream ALERTS`
+- `control-plane`: `control-plane listening on :8080`
 - `agent`: `Lavender is watching. Ctrl+C to stop`
 
 When raw telemetry flows through ingest, you should also see a republish log like:
@@ -51,6 +61,14 @@ Subscribe from the host to inspect each subject family:
 nats sub "heartbeat.>"
 nats sub "telemetry.raw.>"
 nats sub "telemetry.accepted.>"
+nats sub "alerts.>"
+```
+
+Inspect the JetStream streams and consumers directly:
+
+```bash
+nats stream ls
+nats consumer report TELEMETRY_CANONICAL
 ```
 
 ## Triggering Telemetry
@@ -66,7 +84,9 @@ That should produce:
 - a raw event on `telemetry.raw.<tenant>.<agent_id>`
 - a canonical event on `telemetry.accepted.<tenant>.<agent_id>`
 
-The backend transport path currently publishes `exec` and `heartbeat` only. Local `open` and `connect` handling still happens inside the Rust agent and will not appear on NATS yet.
+The agent publishes `exec`, `open`, `connect`, and `exit` telemetry plus `heartbeat`.
+Detected activity (for example a connection to a suspicious port) produces an alert
+on `alerts.<tenant>.<agent_id>`, which `alert-writer` persists to Postgres.
 
 ## Container Visibility
 
