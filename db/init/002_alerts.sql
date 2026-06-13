@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- alert_id is the deterministic per id from detection, a unique index makes the insert idempotent
+-- so a jetstream redelivery like when alert-writer
+-- inserts then crashes before Ack can't store the same alert twice
+CREATE UNIQUE INDEX IF NOT EXISTS uq_alerts_alert_id ON alerts (alert_id);
+
 CREATE INDEX IF NOT EXISTS idx_alerts_tenant_received_at ON alerts (tenant_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_agent_received_at ON alerts (agent_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_status_received_at ON alerts (status, received_at DESC);

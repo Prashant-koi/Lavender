@@ -44,6 +44,7 @@ func InsertAlert(ctx context.Context, db *pgxpool.Pool, alert events.AlertEvent)
 			$10,
 			$11
 		)
+		ON CONFLICT (alert_id) DO NOTHING
 	`,
 		alert.AlertID,
 		tenantID,
