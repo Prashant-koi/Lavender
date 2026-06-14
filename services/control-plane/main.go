@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Prashant-koi/lavender/control-plane/internal/api"
+	"github.com/Prashant-koi/lavender/control-plane/internal/host"
 	"github.com/Prashant-koi/lavender/control-plane/internal/store"
 	"github.com/Prashant-koi/lavender/control-plane/internal/stream"
 	"github.com/Prashant-koi/lavender/services/platform/env"
@@ -42,6 +43,12 @@ func main() {
 	defer nc.Drain()
 
 	hub := stream.NewHub()
+	registry := host.NewRegistry()
+
+	const (
+		offlineTTL    = 45 * time.Second // three times the 15 second heartbeat if the agent is still stale then assuem offline
+		sweepInterval = 10 * time.Second
+	)
 
 	// here the control-plane consumes alerts to push them to
 	// connected dashboards over SSE our alert writer service  is still the sole persister
@@ -60,9 +67,38 @@ func main() {
 	}
 	defer alertSub.Unsubscribe()
 
+	hearbeatSub, err := nc.Subscribe("heartbeat.>", func(msg *nats.Msg) {
+		var evt events.AgentTelemetryEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			log.Printf("heartbeat: bad paylaod on %s: %v", msg.Subject, err)
+			return
+		}
+
+		tenant := "unknown"
+		if evt.TenantID != nil && *evt.TenantID != "" {
+			tenant = *evt.TenantID
+		}
+
+		state, transitioned := registry.Observe(tenant, evt.AgentID, evt.Host.Hostname, time.Now())
+		if !transitioned {
+			return
+		}
+
+		data, err := json.Marshal(state)
+		if err != nil {
+			log.Printf("heartbeat: marshal state: %v", err)
+			return
+		}
+		hub.Broadcast(stream.Event{Name: "host", Data: data})
+	})
+	if err != nil {
+		log.Fatalf("subscribe heartbeats: %v", err)
+	}
+	defer hearbeatSub.Unsubscribe()
+
 	httpAddr := env.Default("HTTP_ADDR", ":8080")
 	alertStore := store.New(db)
-	apiServer := api.NewServer(alertStore, hub)
+	apiServer := api.NewServer(alertStore, hub, registry)
 
 	server := &http.Server{
 		Addr:              httpAddr,
@@ -78,7 +114,28 @@ func main() {
 		}
 	}()
 
-	log.Printf("control-plane live alert feed subscribed to alerts.>")
+	go func() {
+		ticker := time.NewTicker(sweepInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				for _, st := range registry.Sweep(time.Now(), offlineTTL) {
+					data, err := json.Marshal(st)
+					if err != nil {
+						log.Printf("sweep: marshall state: %v", err)
+						continue
+					}
+					hub.Broadcast(stream.Event{Name: "host", Data: data})
+				}
+			}
+		}
+	}()
+
+	log.Printf("control-plane subscribed to alerts.> and heartbeat.> ")
 
 	<-ctx.Done()
 
