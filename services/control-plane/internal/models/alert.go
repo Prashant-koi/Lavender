@@ -21,6 +21,7 @@ type Alert struct {
 	ReceivedAtUnixMs int64      `json:"received_at_unix_ms"`
 	Status           string     `json:"status"`
 	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type AlertStatusUpdate struct {

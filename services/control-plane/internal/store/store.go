@@ -48,7 +48,8 @@ func (s *Store) ListAlerts(ctx context.Context, filter AlertFilter) ([]models.Al
 				observed_at_unix_ms,
 				received_at_unix_ms,
 				status,
-				created_at
+				created_at,
+				updated_at
 			FROM alerts
 				WHERE ($1 = '' OR tenant_id = $1)
 				AND   ($2 = '' OR agent_id = $2)
@@ -86,6 +87,7 @@ func (s *Store) ListAlerts(ctx context.Context, filter AlertFilter) ([]models.Al
 			&alert.ReceivedAtUnixMs,
 			&alert.Status,
 			&alert.CreatedAt,
+			&alert.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan alert error: %v", err)
 		}
@@ -103,7 +105,7 @@ func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) 
 
 	err := s.db.QueryRow(ctx, `
 		UPDATE alerts
-		SET status = $2
+		SET status = $2, updated_at = now()
 		WHERE id = $1
 		RETURNING
 			id,
@@ -121,7 +123,8 @@ func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) 
 				observed_at_unix_ms,
 				received_at_unix_ms,
 				status,
-				created_at
+				created_at,
+				updated_at
 		`,
 		id,
 		status,
@@ -142,6 +145,7 @@ func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) 
 		&alert.ReceivedAtUnixMs,
 		&alert.Status,
 		&alert.CreatedAt,
+		&alert.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Update status error: %v", err)

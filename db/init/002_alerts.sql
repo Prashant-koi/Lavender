@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     observed_at_unix_ms BIGINT NOT NULL,
     received_at_unix_ms BIGINT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open', -- will add this later in control plane will have 4 differnt types (open/pending/resolved/dismissed) the menings of each are obvious
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now() -- starts equal to created_at and will advanced on status chaneg
 );
 
 -- alert_id is the deterministic per id from detection, a unique index makes the insert idempotent
