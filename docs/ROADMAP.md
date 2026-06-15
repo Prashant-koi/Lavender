@@ -36,4 +36,14 @@
 - agent observability: ring-buffer drop counters and publish-failure counters
 - service metrics and health endpoints
 - TimescaleDB retention and compression policies
-- a dashboard
+- control-plane read API for stored event/telemetry data (e.g. `GET /events`
+  with server-side time-range filtering and pagination over the TimescaleDB
+  hypertables) — backs the dashboard "Data" tab; must be paginated and
+  time-bounded, never load-all, given the event volume
+- persisted agent liveness history (e.g. an `agent_status_history` table
+  recording every online/offline transition) — liveness is currently in-memory
+  only; persistence backs the dashboard "Timeline" tab, whose purpose is to make
+  many agents dropping in a narrow window (sensors disabled fleet-wide =
+  possible coordinated attack) visually obvious
+- a dashboard (React + TypeScript + Vite + Tailwind; see
+  `frontend/DESIGN_BRIEF.md`)

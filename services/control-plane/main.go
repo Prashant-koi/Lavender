@@ -97,8 +97,9 @@ func main() {
 	defer hearbeatSub.Unsubscribe()
 
 	httpAddr := env.Default("HTTP_ADDR", ":8080")
+	webDir := env.Default("WEB_DIR", "") // set in the container image; unset in local dev
 	alertStore := store.New(db)
-	apiServer := api.NewServer(alertStore, hub, registry)
+	apiServer := api.NewServer(alertStore, hub, registry, webDir)
 
 	server := &http.Server{
 		Addr:              httpAddr,

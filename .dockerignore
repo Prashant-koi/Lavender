@@ -5,6 +5,11 @@ target
 agent/target
 common/target
 
+# frontend build artifacts: npm ci reinstalls these in-image, so keep the
+# host copies out of the build context (they'd clobber the clean install)
+frontend/node_modules
+frontend/dist
+
 **/.DS_Store
 **/*.log
 
