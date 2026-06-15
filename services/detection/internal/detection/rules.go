@@ -85,7 +85,7 @@ func suspiciousPortAlert(evt events.CanonicalEvent) *events.AlertEvent {
 	alert := newAlert(
 		evt,
 		"T1071 [Connection to suspicious port]",
-		"warning",
+		"medium",
 		detail,
 	)
 
@@ -147,7 +147,7 @@ func (d *Detector) unexpectedShellSpawnAlert(evt events.CanonicalEvent) *events.
 	alert := newAlert(
 		evt,
 		"T1059 [Unexpected shell spawn]",
-		"warning",
+		"medium",
 		detail,
 	)
 

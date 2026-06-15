@@ -8,7 +8,8 @@ function normalizeAlert(alert: Alert): Alert {
   return {
     ...alert,
     hostname: alert.hostname || alert.agent_id,
-    status: REAL_TO_UI_STATUS[alert.status] ?? alert.status,
+    // live SSE alerts carry no status they are supposed to be implicitly open
+    status: REAL_TO_UI_STATUS[alert.status] ?? alert.status ?? 'open',
     observed_at_unix_ms: alert.observed_at_unix_ms ?? received,
     received_at_unix_ms: received,
     created_at_unix_ms: alert.created_at_unix_ms ?? received,
@@ -39,7 +40,9 @@ export async function fetchAgents(): Promise<Agent[]> {
 
 export async function updateAlertStatus(alert: Alert, status: AlertStatus): Promise<Alert> {
   const backendStatus = UI_TO_REAL_STATUS[status] ?? status
-  const updated = await requestJson<Alert>(`/alerts/${alert.id}/status`, {
+  // key on alert_id, not the DB serial id: live alerts arrive over SSE without
+  // an id, and alert_id is the stable deterministic key for both live + history.
+  const updated = await requestJson<Alert>(`/alerts/${alert.alert_id}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: backendStatus }),

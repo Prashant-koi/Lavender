@@ -77,12 +77,10 @@ func (s *Server) updateAlertStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idRaw := strings.TrimPrefix(path, "/alerts/")
-	idRaw = strings.TrimSuffix(idRaw, "/status")
-	idRaw = strings.TrimSuffix(idRaw, "/")
-
-	id, err := strconv.ParseInt(idRaw, 10, 64)
-	if err != nil || id <= 0 {
+	alertID := strings.TrimPrefix(path, "/alerts/")
+	alertID = strings.TrimSuffix(alertID, "/status")
+	alertID = strings.TrimSuffix(alertID, "/")
+	if alertID == "" {
 		http.Error(w, "invalid alert id", http.StatusBadRequest)
 		return
 	}
@@ -98,7 +96,7 @@ func (s *Server) updateAlertStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alert, err := s.store.UpdateAlertStatus(r.Context(), id, update.Status)
+	alert, err := s.store.UpdateAlertStatus(r.Context(), alertID, update.Status)
 	if err != nil {
 		log.Printf("update alert status: %v", err)
 		http.Error(w, "failed to update alert status", http.StatusInternalServerError)

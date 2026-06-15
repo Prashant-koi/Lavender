@@ -100,13 +100,13 @@ func (s *Store) ListAlerts(ctx context.Context, filter AlertFilter) ([]models.Al
 	return alerts, nil
 }
 
-func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) (*models.Alert, error) {
+func (s *Store) UpdateAlertStatus(ctx context.Context, alertID string, status string) (*models.Alert, error) {
 	var alert models.Alert
 
 	err := s.db.QueryRow(ctx, `
 		UPDATE alerts
 		SET status = $2, updated_at = now()
-		WHERE id = $1
+		WHERE alert_id = $1
 		RETURNING
 			id,
 			alert_id,
@@ -126,7 +126,7 @@ func (s *Store) UpdateAlertStatus(ctx context.Context, id int64, status string) 
 				created_at,
 				updated_at
 		`,
-		id,
+		alertID,
 		status,
 	).Scan(
 		&alert.ID,
