@@ -2,9 +2,9 @@ import { fmtInt } from '../lib/format'
 import type { TabId } from '../types/domain'
 
 const TABS: Array<[TabId, string]> = [
+  ['overview', 'Overview'],
   ['alerts', 'Alerts'],
   ['liveness', 'Agent Liveness'],
-  ['data', 'Data'],
   ['timeline', 'Timeline'],
 ]
 
@@ -38,13 +38,13 @@ export function TopBar({ tenant, tenants, onTenant, summary }: {
   )
 }
 
-export function Tabs({ active, onChange, openCount }: { active: TabId; onChange: (tab: TabId) => void; openCount: number }) {
+export function Sidebar({ active, onChange, openCount }: { active: TabId; onChange: (tab: TabId) => void; openCount: number }) {
   return (
-    <nav className="tabstrip">
+    <nav className="sidebar">
       {TABS.map(([id, label]) => (
-        <button key={id} className={`tab${active === id ? ' on' : ''}`} onClick={() => onChange(id)}>
-          {label}
-          {id === 'alerts' && openCount > 0 ? <span className="tabbadge">{openCount}</span> : null}
+        <button key={id} className={`snav-item${active === id ? ' on' : ''}`} onClick={() => onChange(id)}>
+          <span>{label}</span>
+          {id === 'alerts' && openCount > 0 ? <span className="snav-badge">{openCount}</span> : null}
         </button>
       ))}
     </nav>

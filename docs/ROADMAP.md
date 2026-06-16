@@ -36,10 +36,17 @@
 - agent observability: ring-buffer drop counters and publish-failure counters
 - service metrics and health endpoints
 - TimescaleDB retention and compression policies
+- control-plane alert-stats aggregation endpoint (e.g. `GET /alerts/stats?range=24h`)
+  using TimescaleDB `time_bucket()` for the alert-rate line and a `GROUP BY`
+  technique for the type breakdown — backs the dashboard Overview charts, which
+  currently compute both client-side from the capped `GET /alerts` list and so
+  are only correct below the 200-row limit
 - control-plane read API for stored event/telemetry data (e.g. `GET /events`
   with server-side time-range filtering and pagination over the TimescaleDB
-  hypertables) — backs the dashboard "Data" tab; must be paginated and
-  time-bounded, never load-all, given the event volume
+  hypertables); must be paginated and time-bounded, never load-all, given the
+  event volume. Note: raw-event browsing is intentionally NOT a dashboard tab —
+  that volume belongs in a dedicated hunting/data-lake surface, not the operator
+  console
 - persisted agent liveness history (e.g. an `agent_status_history` table
   recording every online/offline transition) — liveness is currently in-memory
   only; persistence backs the dashboard "Timeline" tab, whose purpose is to make

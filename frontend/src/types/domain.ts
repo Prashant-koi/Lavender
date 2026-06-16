@@ -1,7 +1,7 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 export type AlertStatus = 'open' | 'pending' | 'acknowledged' | 'resolved' | 'dismissed'
 export type AgentStatus = 'online' | 'degraded' | 'offline'
-export type TabId = 'alerts' | 'liveness' | 'data' | 'timeline'
+export type TabId = 'overview' | 'alerts' | 'liveness' | 'timeline'
 
 export interface Alert {
   id: number
