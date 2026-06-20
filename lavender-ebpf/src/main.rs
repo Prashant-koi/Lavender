@@ -8,7 +8,10 @@ use aya_ebpf::{
         bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_task_btf,
         bpf_get_current_uid_gid, bpf_probe_read_kernel, bpf_probe_read_user,
         bpf_probe_read_user_str_bytes,
-    }, macros::{map, tracepoint}, maps::RingBuf, programs::TracePointContext
+    }, 
+    macros::{lsm, map, tracepoint}, 
+    maps::{HashMap, RingBuf},
+    programs::{LsmContext, TracePointContext},
 };
 use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent};
 use vmlinux::task_struct;
@@ -26,6 +29,55 @@ static OPEN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static CONN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+//pids the agent is allowed to keep alive which is written from userspace at startup
+//since we do not know the agent pid till runtime
+#[map]
+static PROTECTED_PID: HashMap<u32, u8> = HashMap::with_max_entries(16, 0);
+
+// anti kill
+// THESE ARE ARCH DEPENDENT
+const SIGKILL: i32 = 9;
+const SIGSTOP: i32 = 19;
+const EPERM: i32 = 1;
+
+#[lsm(hook = "task_kill")]
+pub fn task_kill(ctx: LsmContext) -> i32 {
+    match try_task_kill(&ctx) {
+        Ok(ret) => ret,
+        Err(_) => 0, // this is a bit dangerious since this can allow kill if bpf_probe_read_kernel() fails/errors
+    }
+}
+
+fn try_task_kill(ctx: &LsmContext) -> Result<i32, i64> {
+    // arg0 = target task_Struct*, arg2 = signal number
+    let target: *const task_struct = unsafe { ctx.arg(0) };
+    let sig: i32 = unsafe { ctx.arg(2) };
+
+    // leave SIGTERM guard the SIGKILL and SIGSTOP
+    if sig != SIGKILL && sig != SIGSTOP {
+        return Ok(0);
+    }
+
+    // global tgid of the target procees which the userspace stored
+    let target_tgid = unsafe {
+        bpf_probe_read_kernel::<i32>(core::ptr::addr_of!((*target).tgid))? 
+    } as u32;
+
+    // if not a protected pid then normal operations
+    if unsafe {PROTECTED_PID.get(&target_tgid)}.is_none() {
+        return Ok(0);
+    }
+
+    // let the protected processes singnal itslef so they can self stop
+    let sender = (bpf_get_current_pid_tgid() >> 32) as u32;
+    if sender == target_tgid {
+        return  Ok(0);
+    }
+
+    //anyone esle tryign to SIGKILL or SIGSTOP a protected pid is denied
+    Ok(-EPERM)
+}
 
 // handle_execve
 

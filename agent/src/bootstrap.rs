@@ -1,6 +1,7 @@
-use aya::maps::{MapData, RingBuf};
-use aya::programs::TracePoint;
-use aya::{include_bytes_aligned, Bpf};
+use async_nats::rustls::crypto::hash::Hash;
+use aya::maps::{MapData, RingBuf, HashMap};
+use aya::programs::{ self, Lsm, TracePoint };
+use aya::{include_bytes_aligned, Btf, Bpf};
 use tokio::io::unix::AsyncFd;
 
 pub struct AgentBootstrap {
@@ -33,6 +34,26 @@ fn take_ringbuf_fd(bpf: &mut Bpf, map_name: &str) -> AsyncFd<RingBuf<MapData>> {
     AsyncFd::new(ring).unwrap()
 }
 
+fn attach_kill_protection(bpf: &mut Bpf) {
+    // lsm programs resolve ther hooks agains the running kernels BTF so we need to load
+    // the kernel type info first
+    let btf = Btf::from_sys_fs().unwrap();
+
+    let program: &mut Lsm = bpf 
+        .program_mut("task_kill")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    // first arg is kernel hook name
+    program.load("task_kill", &btf).unwrap();
+    program.attach().unwrap();
+
+    // protect pid
+    let mut protected: HashMap<_, u32, u8> = HashMap::try_from(bpf.map_mut("PROTECTED_PID").unwrap()).unwrap();
+    protected.insert(std::process::id(), 1u8, 0).unwrap();
+}
+
 pub fn bootstrap_bpf() -> AgentBootstrap {
     // We will Load the compiled eBPF object file.
     // This contains the kernel-side program and maps.
@@ -43,6 +64,8 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     attach_tracepoint(&mut bpf, "handle_exit", "sched", "sched_process_exit");
     attach_tracepoint(&mut bpf, "handle_open", "syscalls", "sys_enter_openat");
     attach_tracepoint(&mut bpf, "handle_connect", "syscalls", "sys_enter_connect");
+
+    attach_kill_protection(&mut bpf);
 
     let exec_fd = take_ringbuf_fd(&mut bpf, "EXEC_EVENTS");
     let exit_fd = take_ringbuf_fd(&mut bpf, "EXIT_EVENTS");
