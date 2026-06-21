@@ -1,6 +1,5 @@
-use async_nats::rustls::crypto::hash::Hash;
 use aya::maps::{MapData, RingBuf, HashMap};
-use aya::programs::{ self, Lsm, TracePoint };
+use aya::programs::{ Lsm, TracePoint };
 use aya::{include_bytes_aligned, Btf, Bpf};
 use tokio::io::unix::AsyncFd;
 
