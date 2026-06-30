@@ -53,6 +53,20 @@ fn attach_kill_protection(bpf: &mut Bpf) {
     protected.insert(std::process::id(), 1u8, 0).unwrap();
 }
 
+fn attach_tamper_protection(bpf: &mut Bpf) {
+    let btf = Btf::from_sys_fs().unwrap();
+
+    for hook in ["bpf_map", "ptrace_access_check"] {
+        let program: &mut Lsm = bpf
+            .program_mut(hook)
+            .unwrap()
+            .try_into()
+            .unwrap();
+        program.load(hook, &btf).unwrap();
+        program.attach().unwrap();
+    }
+}
+
 pub fn bootstrap_bpf() -> AgentBootstrap {
     // We will Load the compiled eBPF object file.
     // This contains the kernel-side program and maps.
@@ -70,6 +84,8 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     let exit_fd = take_ringbuf_fd(&mut bpf, "EXIT_EVENTS");
     let open_fd = take_ringbuf_fd(&mut bpf, "OPEN_EVENTS");
     let conn_fd = take_ringbuf_fd(&mut bpf, "CONN_EVENTS");
+
+    // attach_tamper_protection(&mut bpf);
 
     AgentBootstrap {
         _bpf: bpf,

@@ -14,7 +14,7 @@ use aya_ebpf::{
     programs::{LsmContext, TracePointContext},
 };
 use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent};
-use vmlinux::task_struct;
+use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
 
@@ -76,6 +76,74 @@ fn try_task_kill(ctx: &LsmContext) -> Result<i32, i64> {
     }
 
     //anyone esle tryign to SIGKILL or SIGSTOP a protected pid is denied
+    Ok(-EPERM)
+}
+
+// Lower Endian encoding (since x86_64/arch64 are LE) of the kernel mal name "PROTECTED_PID\0\0\0"\
+const PROTECTED_MAP_NAME0: u64 = 0x45544345544F5250;
+const PROTECTED_MAP_NAME1: u64 = 0x0000004449505F44;
+
+// security_bpf_map(struct bpf_map *map, fmode_t fmode)
+// fires whenever a process tried to get and fd to a bpf map
+// we refuse to hand out PROTECTED_PID map to anyone but the agent so an attacker can't open it and
+// delete the agents entry to unprotect it
+#[lsm(hook = "bpf_map")]
+pub fn bpf_map(ctx: LsmContext) -> i32 {
+    match try_bpf_map(&ctx) {
+        Ok(ret) => ret,
+        Err(_) => 0,
+    }
+}
+
+fn try_bpf_map(ctx: &LsmContext) -> Result<i32, i64> {
+    let map: *const bpf_map = unsafe { ctx.arg(0) };
+
+    // we read the kernels 16-byte name for this map as two u64s
+    // so there will bne no array indexing and bound checking
+    let name_ptr =  unsafe { core::ptr::addr_of!((*map).name)  as *const u64 };
+    let n0 = unsafe { bpf_probe_read_kernel::<u64>(name_ptr)?};
+    let n1 = unsafe { bpf_probe_read_kernel::<u64>(name_ptr.add(1))?};
+
+    // if not our protected map then we will allow normallu
+    if n0 != PROTECTED_MAP_NAME0 || n1 != PROTECTED_MAP_NAME1 {
+        return Ok(0);
+    }
+
+    let sender = (bpf_get_current_pid_tgid() >> 32) as u32;
+    if unsafe { PROTECTED_PID.get(&sender) }.is_some() {
+        return Ok(0);
+    }
+
+    Ok(-EPERM)
+}
+
+// security_ptrace_access_check(struct task_struct *child, unsigned int mode)
+// stops an attacker from ptrace attaching to the agent and injecting code that would
+// make it cloase it own bpf links or clear its own protection
+#[lsm(hook = "ptrace_access_check")]
+pub fn ptrace_access_check(ctx: LsmContext) -> i32 {
+    match try_ptrace_access_check(&ctx) {
+        Ok(ret) => ret,
+        Err(_) => 0,
+    }
+}
+
+fn try_ptrace_access_check(ctx: &LsmContext) -> Result<i32, i64> {
+    let child: *const task_struct = unsafe { ctx.arg(0) };
+    let child_tgid = unsafe {
+        bpf_probe_read_kernel::<i32>(core::ptr::addr_of!((*child).tgid))?
+    } as u32;
+
+    if unsafe { PROTECTED_PID.get(&child_tgid) }.is_none() {
+        return Ok(0);
+    }
+
+    // allow agent to trace itslef and we will deny others
+    let sender = (bpf_get_current_pid_tgid() >> 32) as u32;
+    if sender == child_tgid {
+        return Ok(0);
+    }
+
     Ok(-EPERM)
 }
 
