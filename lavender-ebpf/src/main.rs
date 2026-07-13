@@ -6,7 +6,7 @@ mod vmlinux;
 use aya_ebpf::{
     helpers::{
         bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_task_btf,
-        bpf_get_current_uid_gid, bpf_probe_read_kernel, bpf_probe_read_user,
+        bpf_get_current_uid_gid, bpf_ktime_get_ns, bpf_probe_read_kernel, bpf_probe_read_user,
         bpf_probe_read_user_str_bytes,
     }, 
     macros::{lsm, map, tracepoint}, 
@@ -170,6 +170,7 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
     unsafe {
         let data = e.as_mut_ptr();
 
+        (*data).ktime_ns = bpf_ktime_get_ns();
         (*data).pid  = (id >> 32) as u32;
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm = comm;
@@ -283,7 +284,11 @@ pub fn handle_exit(_ctx: TracePointContext) -> i32 {
         None    => return 0,
     };
 
-    unsafe { (*slot.as_mut_ptr()).pid = tgid; }
+    unsafe {
+        let data = slot.as_mut_ptr();
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid = tgid;
+    }
 
     slot.submit(0);
     0
@@ -311,6 +316,7 @@ fn try_handle_open(ctx: &TracePointContext) -> Result<(), i64> {
     unsafe {
         let data = o.as_ptr() as *mut OpenEvent;
 
+        (*data).ktime_ns = bpf_ktime_get_ns();
         (*data).pid = (id >> 32) as u32;
         (*data).comm = comm;
 
@@ -356,6 +362,7 @@ fn try_handle_connect(ctx: &TracePointContext) -> Result<(), i64> {
      unsafe {
         let data = e.as_mut_ptr();
 
+        (*data).ktime_ns = bpf_ktime_get_ns();
         (*data).pid   = (id >> 32) as u32;
         (*data).uid   = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm  = comm;

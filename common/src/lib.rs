@@ -7,6 +7,7 @@ extern crate alloc;
 pub mod transport;
 #[repr(C)]
 pub struct ExecEvent {
+    pub ktime_ns: u64, // monotonic kernel time (bpf_ktime_get_ns) at event we will use to reconstruct ordering
     pub pid: u32,
     pub ppid: u32,
     pub uid: u32,
@@ -18,11 +19,13 @@ pub struct ExecEvent {
 
 #[repr(C)]
 pub struct ExitEvent {
+    pub ktime_ns: u64, // monotonic kernel time (bpf_ktime_get_ns) at event we will use use to reconstruct ordering
     pub pid: u32,
 }
 
 #[repr(C)]
 pub struct OpenEvent {
+    pub ktime_ns: u64, // monotonic kernel time (bpf_ktime_get_ns) at event we will use to reconstruct ordering
     pub pid: u32,
     pub comm: [u8; 16],
     pub filename: [u8; 256],
@@ -30,6 +33,7 @@ pub struct OpenEvent {
 
 #[repr(C)]
 pub struct ConnEvent {
+    pub ktime_ns: u64, // monotonic kernel time (bpf_ktime_get_ns) at event we will use tjs to reconstruct ordering
     pub pid: u32,
     pub uid: u32,
     pub comm: [u8; 16], // command name
