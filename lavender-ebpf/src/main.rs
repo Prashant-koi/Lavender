@@ -319,6 +319,7 @@ fn try_handle_open(ctx: &TracePointContext) -> Result<(), i64> {
         (*data).ktime_ns = bpf_ktime_get_ns();
         (*data).pid = (id >> 32) as u32;
         (*data).comm = comm;
+        (*data).flags = ctx.read_at::<u64>(32).unwrap_or(0) as i32; // Read the flag
 
         // args[1] = pathname
         let filename_ptr = match ctx.read_at::<u64>(24) {

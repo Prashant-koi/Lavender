@@ -27,6 +27,7 @@ pub struct ExitEvent {
 pub struct OpenEvent {
     pub ktime_ns: u64, // monotonic kernel time (bpf_ktime_get_ns) at event we will use to reconstruct ordering
     pub pid: u32,
+    pub flags: i32, // openat flags like 0_WRONLY/O_CREAT to know read vs write/create
     pub comm: [u8; 16],
     pub filename: [u8; 256],
 }
