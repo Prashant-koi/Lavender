@@ -175,8 +175,7 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
         (*data).uid  = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm = comm;
         (*data).ppid = current_ppid().unwrap_or(0);
-        (*data).argv1 = [0u8; 128];
-        (*data).argv2 = [0u8; 128];
+        (*data).cmdline = [0u8; 512]; // rigng buffer memory is unitizlized zero so it null terminates
 
         // args[0] = filename pointer 
         let filename_ptr = match ctx.read_at::<u64>(16) {
@@ -201,36 +200,39 @@ fn try_handle_execve(ctx: &TracePointContext) -> Result<(), i64> {
             }
         };
 
-        // argv[1]
-        let arg1_ptr_u64: u64 = match bpf_probe_read_user(argv_ptr.add(1) as *const u64) {
-            Ok(p) => p,
-            Err(_) => {
-                e.submit(0);
-                return Ok(());
+        // we take one explicit &mut to the buffer and index that, so we don't create
+        // an implicit autoref through the raw-pointer deref (which rustc rejects)
+        let buf = &mut (*data).cmdline;
+
+        let mut cursor: usize = 0;
+        let mut i: usize = 0;
+        while i < 32 {
+            if cursor >= 500 {
+                break;
             }
-        };
 
-        if arg1_ptr_u64 != 0 {
-            let _ = bpf_probe_read_user_str_bytes(
-                arg1_ptr_u64 as *const u8,
-                &mut (*data).argv1,
-            );
-        }
-
-        // argv[2]
-        let arg2_ptr_u64: u64 = match bpf_probe_read_user(argv_ptr.add(2) as *const u64) {
-            Ok(p) => p,
-            Err(_) => {
-                e.submit(0);
-                return Ok(());
+            let arg_addr = match bpf_probe_read_user(argv_ptr.add(i)) {
+                Ok(a) => a,
+                Err(_) => break,
+            };
+            if arg_addr.is_null() {
+                break; // end of argv
             }
-        };
 
-        if arg2_ptr_u64 != 0 {
-            let _ = bpf_probe_read_user_str_bytes(
-                arg2_ptr_u64 as *const u8,
-                &mut (*data).argv2,
-            );
+            // we mask start so the verifier sees an in-bounds destination slice
+            let start = cursor & 511;
+            let n = match bpf_probe_read_user_str_bytes(arg_addr, &mut buf[start..]) {
+                Ok(read) => read.len(),
+                Err(_) => break,
+            };
+
+            cursor += n;
+            if cursor < 511 {
+                buf[cursor & 511] = b' ';
+                cursor += 1;
+            }
+
+            i += 1;
         }
     }
 

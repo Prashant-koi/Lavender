@@ -32,16 +32,10 @@ pub fn handle_event(
     let comm = decode_c_string(&event.comm);
     let filename = decode_c_string(&event.filename);
 
-    let argv1 = decode_c_string(&event.argv1);
-    let argv2 = decode_c_string(&event.argv2);
-
-    let cmdline = if argv1.is_empty() {
-        filename.clone()
-    } else if argv2.is_empty() {
-        format!("{} {}", filename, argv1)
-    } else {
-        format!("{} {} {}", filename, argv1, argv2)
-    };
+    let mut cmdline = decode_c_string(&event.cmdline);
+    if cmdline.is_empty() {
+        cmdline = filename.clone(); // fallback when argv wasn't captured
+    }
 
     // Trust the kernel/eBPF parent pid first and only fall back when it is missing.
     let ppid = resolve_ppid(event.pid, event.ppid);

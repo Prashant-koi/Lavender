@@ -13,9 +13,8 @@ pub struct ExecEvent {
     pub uid: u32,
     pub comm: [u8; 16],    // process name, the kernel limits this to 16 bytes (TASK_COMM_LEN)
     pub filename: [u8; 256],
-    pub argv1: [u8; 128], // first captured arg after executable path
-    pub argv2: [u8; 128], // second captured arg after executable path
-}
+    pub cmdline: [u8; 512], // was argv1[128] + argv2[128]; now the full argv joined into one buffer for sigma rules
+} 
 
 #[repr(C)]
 pub struct ExitEvent {

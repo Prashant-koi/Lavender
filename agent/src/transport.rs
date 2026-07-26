@@ -34,9 +34,9 @@ pub fn exec_to_transport_event(
             uid: event.uid,
             comm: bytes_to_string(&event.comm),
             filename: bytes_to_string(&event.filename),
-            argv: vec![bytes_to_string(&event.argv1), bytes_to_string(&event.argv2)]
-                .into_iter()
-                .filter(|s| !s.is_empty())
+            argv: bytes_to_string(&event.cmdline) // keeping the scheme so that other stuff remnains relatively unchanges
+                .split_whitespace()
+                .map(|s| s.to_string())
                 .collect(),
         }),
     }
