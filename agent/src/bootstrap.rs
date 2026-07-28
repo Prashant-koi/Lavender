@@ -10,6 +10,7 @@ pub struct AgentBootstrap {
     pub exit_fd: AsyncFd<RingBuf<MapData>>,
     pub open_fd: AsyncFd<RingBuf<MapData>>,
     pub conn_fd: AsyncFd<RingBuf<MapData>>,
+    pub ptrace_fd: AsyncFd<RingBuf<MapData>>,
 }
 
 fn attach_tracepoint(
@@ -77,6 +78,7 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     attach_tracepoint(&mut bpf, "handle_exit", "sched", "sched_process_exit");
     attach_tracepoint(&mut bpf, "handle_open", "syscalls", "sys_enter_openat");
     attach_tracepoint(&mut bpf, "handle_connect", "syscalls", "sys_enter_connect");
+    attach_tracepoint(&mut bpf, "handle_ptrace", "syscalls", "sys_enter_ptrace");
 
     attach_kill_protection(&mut bpf);
 
@@ -84,6 +86,7 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     let exit_fd = take_ringbuf_fd(&mut bpf, "EXIT_EVENTS");
     let open_fd = take_ringbuf_fd(&mut bpf, "OPEN_EVENTS");
     let conn_fd = take_ringbuf_fd(&mut bpf, "CONN_EVENTS");
+    let ptrace_fd = take_ringbuf_fd(&mut bpf, "PTRACE_EVENTS");
 
     // attach_tamper_protection(&mut bpf);
 
@@ -93,5 +96,6 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
         exit_fd,
         open_fd,
         conn_fd,
+        ptrace_fd,
     }
 }

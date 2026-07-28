@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent};
+use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -29,6 +29,9 @@ static OPEN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static CONN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static PTRACE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -442,6 +445,42 @@ fn try_handle_connect(ctx: &TracePointContext) -> Result<(), i64> {
             e.discard(0);
             return Ok(());
         }
+    }
+
+    e.submit(0);
+    Ok(())
+}
+
+// ptrace
+
+#[tracepoint]
+pub fn handle_ptrace(ctx: TracePointContext) -> i32 {
+    match try_handle_ptrace(&ctx) {
+        Ok(_)  => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_handle_ptrace(ctx: &TracePointContext) -> Result<(), i64> {
+    let mut e = match PTRACE_EVENTS.reserve::<PtraceEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns   = bpf_ktime_get_ns();
+        (*data).pid        = (id >> 32) as u32;
+        (*data).uid        = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm       = comm;
+        // sys_enter_ptrace args: long request(16), long pid(24), ulong addr(32), ulong data(40)
+        (*data).request    = ctx.read_at::<u64>(16).unwrap_or(0) as i32;
+        (*data).target_pid = ctx.read_at::<u64>(24).unwrap_or(0) as u32;
     }
 
     e.submit(0);

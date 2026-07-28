@@ -41,3 +41,14 @@ pub struct ConnEvent {
     pub dport: u16, // the destination port
     pub af: u16, // the address family (IPv4 or IPv6 might be other too)
 }
+
+// ptrace — T1055 process injection / T1003 credential dumping
+#[repr(C)]
+pub struct PtraceEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,        // the tracer (current process)
+    pub uid: u32,        // tracer uid
+    pub comm: [u8; 16],  // tracer comm
+    pub target_pid: u32, // the process being traced
+    pub request: i32,    // PTRACE request: TRACEME=0, POKETEXT=4, ATTACH=16, SEIZE=0x4206, ...
+}

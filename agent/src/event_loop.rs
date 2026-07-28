@@ -1,4 +1,4 @@
-use common::{ConnEvent, ExecEvent, OpenEvent};
+use common::{ConnEvent, ExecEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -6,6 +6,7 @@ use crate::conn_handler;
 use crate::exec_handler;
 use crate::exit_handler;
 use crate::open_handler;
+use crate::ptrace_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -216,6 +217,18 @@ pub async fn run(
                             eprintln!("failed to publish telemetry: {err}");
                         }
                     }
+                }
+
+                guard.clear_ready();
+            }
+
+            // ptrace events (T1055 injection / T1003 cred dump)
+            Ok(mut guard) = bootstrap.ptrace_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const PtraceEvent) };
+                    ptrace_handler::handle_event(event);
                 }
 
                 guard.clear_ready();

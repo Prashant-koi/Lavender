@@ -18,3 +18,4 @@ pub use handlers::conn as conn_handler;
 pub use handlers::exec as exec_handler;
 pub use handlers::exit as exit_handler;
 pub use handlers::open as open_handler;
+pub use handlers::ptrace as ptrace_handler;
