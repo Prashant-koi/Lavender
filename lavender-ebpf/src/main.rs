@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{ConnEvent, ExecEvent, ExitEvent, OpenEvent, PtraceEvent};
+use common::{ConnEvent, ExecEvent, ExitEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -32,6 +32,9 @@ static CONN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static PTRACE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static MODULE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -485,6 +488,54 @@ fn try_handle_ptrace(ctx: &TracePointContext) -> Result<(), i64> {
 
     e.submit(0);
     Ok(())
+}
+
+// module load — T1547.006 rootkit / LKM loading
+
+#[inline(always)]
+fn emit_module_load(ctx: &TracePointContext, is_finit: u8, param_off: usize) {
+    let mut e = match MODULE_EVENTS.reserve::<ModuleLoadEvent>(0) {
+        Some(e) => e,
+        None    => return,
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid      = (id >> 32) as u32;
+        (*data).uid      = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm     = comm;
+        (*data).is_finit = is_finit;
+        (*data).params   = [0u8; 128];
+
+        // module param string; may be null, in which case params stays empty
+        if let Ok(pv) = ctx.read_at::<u64>(param_off) {
+            if pv != 0 {
+                let _ = bpf_probe_read_user_str_bytes(pv as *const u8, &mut (*data).params);
+            }
+        }
+    }
+
+    e.submit(0);
+}
+
+#[tracepoint]
+pub fn handle_finit_module(ctx: TracePointContext) -> i32 {
+    // finit_module(fd, param_values, flags): param_values at offset 24
+    emit_module_load(&ctx, 1, 24);
+    0
+}
+
+#[tracepoint]
+pub fn handle_init_module(ctx: TracePointContext) -> i32 {
+    // init_module(umod, len, param_values): param_values at offset 32
+    emit_module_load(&ctx, 0, 32);
+    0
 }
 
 // required — eBPF programs must declare a panic handler

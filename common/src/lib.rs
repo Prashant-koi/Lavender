@@ -52,3 +52,14 @@ pub struct PtraceEvent {
     pub target_pid: u32, // the process being traced
     pub request: i32,    // PTRACE request: TRACEME=0, POKETEXT=4, ATTACH=16, SEIZE=0x4206, ...
 }
+
+// module load — T1547.006 rootkit / LKM loading
+#[repr(C)]
+pub struct ModuleLoadEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,          // the process loading the module (should be modprobe/kmod/systemd)
+    pub uid: u32,
+    pub comm: [u8; 16],    // loader comm
+    pub is_finit: u8,      // 1 = finit_module (fd-based, modern), 0 = init_module (memory image, legacy)
+    pub params: [u8; 128], // module parameter string passed to the load
+}

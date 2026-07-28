@@ -1,4 +1,4 @@
-use common::{ConnEvent, ExecEvent, OpenEvent, PtraceEvent};
+use common::{ConnEvent, ExecEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -7,6 +7,7 @@ use crate::exec_handler;
 use crate::exit_handler;
 use crate::open_handler;
 use crate::ptrace_handler;
+use crate::modload_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -229,6 +230,18 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const PtraceEvent) };
                     ptrace_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // module load (T1547.006 rootkit / LKM)
+            Ok(mut guard) = bootstrap.module_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const ModuleLoadEvent) };
+                    modload_handler::handle_event(event);
                 }
 
                 guard.clear_ready();

@@ -19,3 +19,4 @@ pub use handlers::exec as exec_handler;
 pub use handlers::exit as exit_handler;
 pub use handlers::open as open_handler;
 pub use handlers::ptrace as ptrace_handler;
+pub use handlers::modload as modload_handler;
