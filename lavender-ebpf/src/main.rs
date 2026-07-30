@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{BpfEvent, ConnEvent, ExecEvent, ExitEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, ExitEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -38,6 +38,9 @@ static MODULE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static BPF_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static MEMFD_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -574,6 +577,48 @@ fn try_observe_bpf(ctx: &LsmContext) -> Result<(), i64> {
         (*data).uid      = (ugid & 0xFFFFFFFF) as u32;
         (*data).comm     = comm;
         (*data).cmd      = ctx.arg(0); // int cmd (arg 0 of security_bpf)
+    }
+
+    e.submit(0);
+    Ok(())
+}
+
+// memfd_create
+
+#[tracepoint]
+pub fn handle_memfd_create(ctx: TracePointContext) -> i32 {
+    match try_handle_memfd_create(&ctx) {
+        Ok(_)  => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_handle_memfd_create(ctx: &TracePointContext) -> Result<(), i64> {
+    let mut e = match MEMFD_EVENTS.reserve::<MemfdEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid      = (id >> 32) as u32;
+        (*data).uid      = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm     = comm;
+        // memfd_create(const char *name, unsigned int flags): name @ 16, flags @ 24
+        (*data).flags    = ctx.read_at::<u64>(24).unwrap_or(0) as u32;
+        (*data).name     = [0u8; 64];
+
+        if let Ok(name_ptr) = ctx.read_at::<u64>(16) {
+            if name_ptr != 0 {
+                let _ = bpf_probe_read_user_str_bytes(name_ptr as *const u8, &mut (*data).name);
+            }
+        }
     }
 
     e.submit(0);

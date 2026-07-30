@@ -1,4 +1,4 @@
-use common::{BpfEvent, ConnEvent, ExecEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -9,6 +9,7 @@ use crate::open_handler;
 use crate::ptrace_handler;
 use crate::modload_handler;
 use crate::bpf_handler;
+use crate::memfd_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -255,6 +256,18 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const BpfEvent) };
                     bpf_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // memfd_create (T1620 fileless staging
+            Ok(mut guard) = bootstrap.memfd_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const MemfdEvent) };
+                    memfd_handler::handle_event(event);
                 }
 
                 guard.clear_ready();

@@ -21,3 +21,4 @@ pub use handlers::open as open_handler;
 pub use handlers::ptrace as ptrace_handler;
 pub use handlers::modload as modload_handler;
 pub use handlers::bpf as bpf_handler;
+pub use handlers::memfd as memfd_handler;

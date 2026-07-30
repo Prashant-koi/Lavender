@@ -73,3 +73,14 @@ pub struct BpfEvent {
     pub comm: [u8; 16],
     pub cmd: u32, // bpf() command: MAP_CREATE=0, PROG_LOAD=5, BTF_LOAD=18, etc etc
 }
+
+// memfd_create T1620 fileless payload staging (RAM-backed file, no disk path)
+#[repr(C)]
+pub struct MemfdEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub uid: u32,
+    pub comm: [u8; 16], // creator comm
+    pub flags: u32,     // MFD_CLOEXEC=1, MFD_ALLOW_SEALING=2, MFD_HUGETLB=4
+    pub name: [u8; 64], // memfd name which is often empty
+}
