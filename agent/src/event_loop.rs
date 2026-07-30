@@ -1,4 +1,4 @@
-use common::{ConnEvent, ExecEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -8,6 +8,7 @@ use crate::exit_handler;
 use crate::open_handler;
 use crate::ptrace_handler;
 use crate::modload_handler;
+use crate::bpf_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -242,6 +243,18 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const ModuleLoadEvent) };
                     modload_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // bpf() syscalls (T1562.001 blind-the-EDR)
+            Ok(mut guard) = bootstrap.bpf_events_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const BpfEvent) };
+                    bpf_handler::handle_event(event);
                 }
 
                 guard.clear_ready();

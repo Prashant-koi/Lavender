@@ -12,6 +12,7 @@ pub struct AgentBootstrap {
     pub conn_fd: AsyncFd<RingBuf<MapData>>,
     pub ptrace_fd: AsyncFd<RingBuf<MapData>>,
     pub module_fd: AsyncFd<RingBuf<MapData>>,
+    pub bpf_events_fd: AsyncFd<RingBuf<MapData>>,
 }
 
 fn attach_tracepoint(
@@ -55,6 +56,22 @@ fn attach_kill_protection(bpf: &mut Bpf) {
     protected.insert(std::process::id(), 1u8, 0).unwrap();
 }
 
+// observation-only LSM on the bpf() syscall (returns 0/allow, just emits telemetry).
+// Loaded after kill-protection so PROTECTED_PID is populated for the in-kernel self-filter,
+// and before the ring-buffer take so its BPF_EVENTS map reference still resolves.
+fn attach_bpf_observer(bpf: &mut Bpf) {
+    let btf = Btf::from_sys_fs().unwrap();
+
+    let program: &mut Lsm = bpf
+        .program_mut("observe_bpf")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    program.load("bpf", &btf).unwrap(); // kernel hook name is "bpf"
+    program.attach().unwrap();
+}
+
 fn attach_tamper_protection(bpf: &mut Bpf) {
     let btf = Btf::from_sys_fs().unwrap();
 
@@ -84,6 +101,7 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     attach_tracepoint(&mut bpf, "handle_init_module", "syscalls", "sys_enter_init_module");
 
     attach_kill_protection(&mut bpf);
+    attach_bpf_observer(&mut bpf);
 
     let exec_fd = take_ringbuf_fd(&mut bpf, "EXEC_EVENTS");
     let exit_fd = take_ringbuf_fd(&mut bpf, "EXIT_EVENTS");
@@ -91,6 +109,7 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     let conn_fd = take_ringbuf_fd(&mut bpf, "CONN_EVENTS");
     let ptrace_fd = take_ringbuf_fd(&mut bpf, "PTRACE_EVENTS");
     let module_fd = take_ringbuf_fd(&mut bpf, "MODULE_EVENTS");
+    let bpf_events_fd = take_ringbuf_fd(&mut bpf, "BPF_EVENTS");
 
     // attach_tamper_protection(&mut bpf);
 
@@ -102,5 +121,6 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
         conn_fd,
         ptrace_fd,
         module_fd,
+        bpf_events_fd,
     }
 }

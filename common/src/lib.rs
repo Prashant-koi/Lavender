@@ -63,3 +63,13 @@ pub struct ModuleLoadEvent {
     pub is_finit: u8,      // 1 = finit_module (fd-based, modern), 0 = init_module (memory image, legacy)
     pub params: [u8; 128], // module parameter string passed to the load
 }
+
+// bpf() syscall; T1562.001 loading BPF to blind/disable tooling
+#[repr(C)]
+pub struct BpfEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub uid: u32,
+    pub comm: [u8; 16],
+    pub cmd: u32, // bpf() command: MAP_CREATE=0, PROG_LOAD=5, BTF_LOAD=18, etc etc
+}

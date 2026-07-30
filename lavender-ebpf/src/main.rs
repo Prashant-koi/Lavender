@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{ConnEvent, ExecEvent, ExitEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, ExitEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -35,6 +35,9 @@ static PTRACE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static MODULE_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static BPF_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -536,6 +539,45 @@ pub fn handle_init_module(ctx: TracePointContext) -> i32 {
     // init_module(umod, len, param_values): param_values at offset 32
     emit_module_load(&ctx, 0, 32);
     0
+}
+
+// bpf() syscall observation, T1562.001 attacker loading BPF to blind tooling.
+// security_bpf(int cmd, union bpf_attr *attr, unsigned int size)
+#[lsm(hook = "bpf")]
+pub fn observe_bpf(ctx: LsmContext) -> i32 {
+    let _ = try_observe_bpf(&ctx);
+    0 // we never deny we are just observing
+}
+
+fn try_observe_bpf(ctx: &LsmContext) -> Result<(), i64> {
+    let id  = bpf_get_current_pid_tgid();
+    let pid = (id >> 32) as u32;
+
+    // skip the agent's own bpf() usage so we don't drown in our own noise
+    if unsafe { PROTECTED_PID.get(&pid) }.is_some() {
+        return Ok(());
+    }
+
+    let mut e = match BPF_EVENTS.reserve::<BpfEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid      = pid;
+        (*data).uid      = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm     = comm;
+        (*data).cmd      = ctx.arg(0); // int cmd (arg 0 of security_bpf)
+    }
+
+    e.submit(0);
+    Ok(())
 }
 
 // required — eBPF programs must declare a panic handler
