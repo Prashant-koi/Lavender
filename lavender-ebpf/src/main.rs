@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -44,6 +44,12 @@ static MEMFD_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static EXECVEAT_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static BIND_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static LISTEN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -704,6 +710,127 @@ fn try_handle_execveat(ctx: &TracePointContext) -> Result<(), i64> {
                 i += 1;
             }
         }
+    }
+
+    e.submit(0);
+    Ok(())
+}
+
+// bind — T1571 backdoor listener (parses the local sockaddr, same as connect)
+
+#[tracepoint]
+pub fn handle_bind(ctx: TracePointContext) -> i32 {
+    match try_handle_bind(&ctx) {
+        Ok(_)  => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_handle_bind(ctx: &TracePointContext) -> Result<(), i64> {
+    let mut e = match BIND_EVENTS.reserve::<BindEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid   = (id >> 32) as u32;
+        (*data).uid   = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm  = comm;
+        (*data).addr  = [0u8; 16];
+        (*data).port  = 0;
+
+        // bind(sockfd, sockaddr, addrlen): sockaddr ptr @ offset 24
+        let addr_ptr = match ctx.read_at::<u64>(24) {
+            Ok(ptr) => ptr as *const u8,
+            Err(_) => {
+                e.discard(0);
+                return Ok(());
+            }
+        };
+
+        let af: u16 = match bpf_probe_read_user(addr_ptr as *const u16) {
+            Ok(v) => v,
+            Err(_) => {
+                e.discard(0);
+                return Ok(());
+            }
+        };
+        (*data).af = af;
+
+        if af == 2 {
+            // AF_INET: u16 family, u16 port, u32 addr
+            let port: u16 = match bpf_probe_read_user(addr_ptr.add(2) as *const u16) {
+                Ok(v) => v,
+                Err(_) => { e.discard(0); return Ok(()); }
+            };
+            (*data).port = u16::from_be(port);
+
+            let addr: u32 = match bpf_probe_read_user(addr_ptr.add(4) as *const u32) {
+                Ok(v) => v,
+                Err(_) => { e.discard(0); return Ok(()); }
+            };
+            let d = &mut (*data).addr;
+            d[..4].copy_from_slice(&addr.to_ne_bytes());
+        } else if af == 10 {
+            // AF_INET6: u16 family, u16 port, u32 flowinfo, u8[16] addr
+            let port: u16 = match bpf_probe_read_user(addr_ptr.add(2) as *const u16) {
+                Ok(v) => v,
+                Err(_) => { e.discard(0); return Ok(()); }
+            };
+            (*data).port = u16::from_be(port);
+
+            let addr: [u8; 16] = match bpf_probe_read_user(addr_ptr.add(8) as *const [u8; 16]) {
+                Ok(v) => v,
+                Err(_) => { e.discard(0); return Ok(()); }
+            };
+            (*data).addr = addr;
+        } else {
+            e.discard(0);
+            return Ok(());
+        }
+    }
+
+    e.submit(0);
+    Ok(())
+}
+
+// listen — T1571 socket becomes a passive listener
+
+#[tracepoint]
+pub fn handle_listen(ctx: TracePointContext) -> i32 {
+    match try_handle_listen(&ctx) {
+        Ok(_)  => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_handle_listen(ctx: &TracePointContext) -> Result<(), i64> {
+    let mut e = match LISTEN_EVENTS.reserve::<ListenEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid     = (id >> 32) as u32;
+        (*data).uid     = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm    = comm;
+        // listen(sockfd, backlog): sockfd @ 16, backlog @ 24
+        (*data).sockfd  = ctx.read_at::<u64>(16).unwrap_or(0) as i32;
+        (*data).backlog = ctx.read_at::<u64>(24).unwrap_or(0) as i32;
     }
 
     e.submit(0);

@@ -7,6 +7,8 @@ pub mod modload;
 pub mod bpf;
 pub mod memfd;
 pub mod execveat;
+pub mod bind;
+pub mod listen;
 
 pub(crate) fn decode_c_string(bytes: &[u8]) -> String {
 	let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());

@@ -98,3 +98,26 @@ pub struct ExecveatEvent {
     pub filename: [u8; 256], // pathname (empty when AT_EMPTY_PATH fd-exec)
     pub cmdline: [u8; 512],  // argv joined, same as execve
 }
+
+// bind — T1571 backdoor listener: the local IP:port a socket claims
+#[repr(C)]
+pub struct BindEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub uid: u32,
+    pub comm: [u8; 16],
+    pub addr: [u8; 16], // bound local IP (IPv4 in first 4 bytes, else IPv6)
+    pub port: u16,      // bound local port (host byte order)
+    pub af: u16,        // address family: 2=AF_INET, 10=AF_INET6
+}
+
+// listen — T1571 the moment a socket becomes a passive listener
+#[repr(C)]
+pub struct ListenEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub uid: u32,
+    pub comm: [u8; 16],
+    pub sockfd: i32,  // the socket fd being marked passive
+    pub backlog: i32, // listen backlog
+}

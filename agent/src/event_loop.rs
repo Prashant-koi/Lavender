@@ -1,4 +1,4 @@
-use common::{BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -11,6 +11,8 @@ use crate::modload_handler;
 use crate::bpf_handler;
 use crate::memfd_handler;
 use crate::execveat_handler;
+use crate::bind_handler;
+use crate::listen_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -281,6 +283,30 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const ExecveatEvent) };
                     execveat_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // bind (T1571 backdoor listener means the port claimed it)
+            Ok(mut guard) = bootstrap.bind_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const BindEvent) };
+                    bind_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // listen (T1571 socket became a passive listener)
+            Ok(mut guard) = bootstrap.listen_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const ListenEvent) };
+                    listen_handler::handle_event(event);
                 }
 
                 guard.clear_ready();
