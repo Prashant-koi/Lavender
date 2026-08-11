@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{BpfEvent, ConnEvent, ExecEvent, ExitEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -41,6 +41,9 @@ static BPF_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static MEMFD_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static EXECVEAT_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -617,6 +620,88 @@ fn try_handle_memfd_create(ctx: &TracePointContext) -> Result<(), i64> {
         if let Ok(name_ptr) = ctx.read_at::<u64>(16) {
             if name_ptr != 0 {
                 let _ = bpf_probe_read_user_str_bytes(name_ptr as *const u8, &mut (*data).name);
+            }
+        }
+    }
+
+    e.submit(0);
+    Ok(())
+}
+
+// execveat — T1620 exec-from-fd / fileless execution
+
+#[tracepoint]
+pub fn handle_execveat(ctx: TracePointContext) -> i32 {
+    match try_handle_execveat(&ctx) {
+        Ok(_)  => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_handle_execveat(ctx: &TracePointContext) -> Result<(), i64> {
+    let mut e = match EXECVEAT_EVENTS.reserve::<ExecveatEvent>(0) {
+        Some(e) => e,
+        None    => return Ok(()),
+    };
+
+    let id   = bpf_get_current_pid_tgid();
+    let ugid = bpf_get_current_uid_gid();
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid      = (id >> 32) as u32;
+        (*data).uid      = (ugid & 0xFFFFFFFF) as u32;
+        (*data).comm     = comm;
+        (*data).ppid     = current_ppid().unwrap_or(0);
+        // execveat(dirfd, pathname, argv, envp, flags): dirfd@16, pathname@24, argv@32, flags@48
+        (*data).dirfd    = ctx.read_at::<u64>(16).unwrap_or(0) as i32;
+        (*data).flags    = ctx.read_at::<u64>(48).unwrap_or(0) as i32;
+        (*data).filename = [0u8; 256];
+        (*data).cmdline  = [0u8; 512];
+
+        // pathname (may be empty when AT_EMPTY_PATH fd-exec)
+        if let Ok(fp) = ctx.read_at::<u64>(24) {
+            if fp != 0 {
+                let _ = bpf_probe_read_user_str_bytes(fp as *const u8, &mut (*data).filename);
+            }
+        }
+
+        // argv @ 32 — join into cmdline (same masked-slice loop as execve)
+        if let Ok(av) = ctx.read_at::<u64>(32) {
+            let argv_ptr = av as *const *const u8;
+            let buf = &mut (*data).cmdline;
+
+            let mut cursor: usize = 0;
+            let mut i: usize = 0;
+            while i < 32 {
+                if cursor >= 500 {
+                    break;
+                }
+
+                let arg_addr = match bpf_probe_read_user(argv_ptr.add(i)) {
+                    Ok(a) => a,
+                    Err(_) => break,
+                };
+                if arg_addr.is_null() {
+                    break;
+                }
+
+                let start = cursor & 511;
+                let n = match bpf_probe_read_user_str_bytes(arg_addr, &mut buf[start..]) {
+                    Ok(read) => read.len(),
+                    Err(_) => break,
+                };
+
+                cursor += n;
+                if cursor < 511 {
+                    buf[cursor & 511] = b' ';
+                    cursor += 1;
+                }
+
+                i += 1;
             }
         }
     }

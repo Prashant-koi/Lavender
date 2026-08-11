@@ -84,3 +84,17 @@ pub struct MemfdEvent {
     pub flags: u32,     // MFD_CLOEXEC=1, MFD_ALLOW_SEALING=2, MFD_HUGETLB=4
     pub name: [u8; 64], // memfd name which is often empty
 }
+
+// execveat — T1620 exec-from-fd / fileless execution (back half of the memfd chain)
+#[repr(C)]
+pub struct ExecveatEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub ppid: u32,
+    pub uid: u32,
+    pub comm: [u8; 16],
+    pub dirfd: i32,          // fd/dir the exec is relative to; a memfd here == fileless
+    pub flags: i32,          // AT_EMPTY_PATH=0x1000 => executing straight from the fd
+    pub filename: [u8; 256], // pathname (empty when AT_EMPTY_PATH fd-exec)
+    pub cmdline: [u8; 512],  // argv joined, same as execve
+}

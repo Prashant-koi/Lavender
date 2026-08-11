@@ -1,4 +1,4 @@
-use common::{BpfEvent, ConnEvent, ExecEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -10,6 +10,7 @@ use crate::ptrace_handler;
 use crate::modload_handler;
 use crate::bpf_handler;
 use crate::memfd_handler;
+use crate::execveat_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -268,6 +269,18 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const MemfdEvent) };
                     memfd_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // execveat (T1620 fileless exec-from-fd). Phase 1: local visibility only.
+            Ok(mut guard) = bootstrap.execveat_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const ExecveatEvent) };
+                    execveat_handler::handle_event(event);
                 }
 
                 guard.clear_ready();
