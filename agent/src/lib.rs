@@ -25,3 +25,4 @@ pub use handlers::memfd as memfd_handler;
 pub use handlers::execveat as execveat_handler;
 pub use handlers::bind as bind_handler;
 pub use handlers::listen as listen_handler;
+pub use handlers::setid as setid_handler;

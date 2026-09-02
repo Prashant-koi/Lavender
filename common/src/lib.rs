@@ -121,3 +121,16 @@ pub struct ListenEvent {
     pub sockfd: i32,  // the socket fd being marked passive
     pub backlog: i32, // listen backlog
 }
+
+// setuid family — T1548 privilege escalation (uid transition + whether it succeeded)
+#[repr(C)]
+pub struct SetidEvent {
+    pub ktime_ns: u64,
+    pub pid: u32,
+    pub old_uid: u32,   // effective uid before the call
+    pub new_uid: u32,   // target effective uid (0xFFFFFFFF/-1 = "leave unchanged")
+    pub comm: [u8; 16],
+    pub call: u8,       // 0=setuid, 1=setreuid, 2=setresuid
+    pub success: u8,    // 1 if the syscall returned 0
+    pub _pad: [u8; 2],
+}

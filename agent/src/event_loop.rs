@@ -1,4 +1,4 @@
-use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent, SetidEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -13,6 +13,7 @@ use crate::memfd_handler;
 use crate::execveat_handler;
 use crate::bind_handler;
 use crate::listen_handler;
+use crate::setid_handler;
 use crate::publisher::Publisher;
 use crate::runtime::RuntimeState;
 use crate::users::UserDb;
@@ -307,6 +308,18 @@ pub async fn run(
                 while let Some(item) = rb.next() {
                     let event = unsafe { &*(item.as_ptr() as *const ListenEvent) };
                     listen_handler::handle_event(event);
+                }
+
+                guard.clear_ready();
+            }
+
+            // setuid family (T1548 privilege escalation
+            Ok(mut guard) = bootstrap.setid_fd.readable_mut() => {
+                let rb = guard.get_inner_mut();
+
+                while let Some(item) = rb.next() {
+                    let event = unsafe { &*(item.as_ptr() as *const SetidEvent) };
+                    setid_handler::handle_event(event);
                 }
 
                 guard.clear_ready();

@@ -17,6 +17,7 @@ pub struct AgentBootstrap {
     pub execveat_fd: AsyncFd<RingBuf<MapData>>,
     pub bind_fd: AsyncFd<RingBuf<MapData>>,
     pub listen_fd: AsyncFd<RingBuf<MapData>>,
+    pub setid_fd: AsyncFd<RingBuf<MapData>>,
 }
 
 fn attach_tracepoint(
@@ -107,6 +108,12 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     attach_tracepoint(&mut bpf, "handle_execveat", "syscalls", "sys_enter_execveat");
     attach_tracepoint(&mut bpf, "handle_bind", "syscalls", "sys_enter_bind");
     attach_tracepoint(&mut bpf, "handle_listen", "syscalls", "sys_enter_listen");
+    attach_tracepoint(&mut bpf, "handle_setuid", "syscalls", "sys_enter_setuid");
+    attach_tracepoint(&mut bpf, "handle_setreuid", "syscalls", "sys_enter_setreuid");
+    attach_tracepoint(&mut bpf, "handle_setresuid", "syscalls", "sys_enter_setresuid");
+    attach_tracepoint(&mut bpf, "handle_exit_setuid", "syscalls", "sys_exit_setuid");
+    attach_tracepoint(&mut bpf, "handle_exit_setreuid", "syscalls", "sys_exit_setreuid");
+    attach_tracepoint(&mut bpf, "handle_exit_setresuid", "syscalls", "sys_exit_setresuid");
 
     attach_kill_protection(&mut bpf);
     attach_bpf_observer(&mut bpf);
@@ -122,6 +129,7 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
     let execveat_fd = take_ringbuf_fd(&mut bpf, "EXECVEAT_EVENTS");
     let bind_fd = take_ringbuf_fd(&mut bpf, "BIND_EVENTS");
     let listen_fd = take_ringbuf_fd(&mut bpf, "LISTEN_EVENTS");
+    let setid_fd = take_ringbuf_fd(&mut bpf, "SETID_EVENTS");
 
     // attach_tamper_protection(&mut bpf);
 
@@ -138,5 +146,6 @@ pub fn bootstrap_bpf() -> AgentBootstrap {
         execveat_fd,
         bind_fd,
         listen_fd,
+        setid_fd,
     }
 }

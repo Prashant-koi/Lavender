@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
     programs::{LsmContext, TracePointContext},
 };
-use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent};
+use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent, SetidEvent};
 use vmlinux::{ bpf_map, task_struct };
 
 // all the maps
@@ -50,6 +50,14 @@ static BIND_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 #[map]
 static LISTEN_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[map]
+static SETID_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+// per-pid scratch: the enter handler stashes (old uid, target) here so the exit
+// handler can pair it with the return value and know whether the change succeeded
+#[map]
+static SETID_PENDING: HashMap<u32, PendingSetid> = HashMap::with_max_entries(4096, 0);
 
 //pids the agent is allowed to keep alive which is written from userspace at startup
 //since we do not know the agent pid till runtime
@@ -835,6 +843,104 @@ fn try_handle_listen(ctx: &TracePointContext) -> Result<(), i64> {
 
     e.submit(0);
     Ok(())
+}
+
+// setuid family — T1548 privilege escalation.
+// enter records (old uid, target); exit pairs it with the return value so we can
+// tell "non-root became root" from a failed attempt or a routine privilege drop.
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct PendingSetid {
+    old_uid: u32,
+    target: u32,
+    call: u8,
+}
+
+#[inline(always)]
+fn setid_enter(target: u32, call: u8) {
+    let id  = bpf_get_current_pid_tgid();
+    let pid = (id >> 32) as u32;
+    let old_uid = (bpf_get_current_uid_gid() & 0xFFFFFFFF) as u32;
+    let pending = PendingSetid { old_uid, target, call };
+    let _ = SETID_PENDING.insert(&pid, &pending, 0);
+}
+
+#[inline(always)]
+fn setid_exit(ctx: &TracePointContext) {
+    let id  = bpf_get_current_pid_tgid();
+    let pid = (id >> 32) as u32;
+
+    let pending = match unsafe { SETID_PENDING.get(&pid) } {
+        Some(p) => *p,
+        None    => return,
+    };
+    let _ = SETID_PENDING.remove(&pid);
+
+    // sys_exit_* tracepoints carry the return value at offset 16
+    let ret = unsafe { ctx.read_at::<i64>(16) }.unwrap_or(-1);
+
+    let mut e = match SETID_EVENTS.reserve::<SetidEvent>(0) {
+        Some(e) => e,
+        None    => return,
+    };
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
+    unsafe {
+        let data = e.as_mut_ptr();
+        (*data).ktime_ns = bpf_ktime_get_ns();
+        (*data).pid      = pid;
+        (*data).old_uid  = pending.old_uid;
+        (*data).new_uid  = pending.target;
+        (*data).comm     = comm;
+        (*data).call     = pending.call;
+        (*data).success  = if ret == 0 { 1 } else { 0 };
+        (*data)._pad     = [0u8; 2];
+    }
+
+    e.submit(0);
+}
+
+#[tracepoint]
+pub fn handle_setuid(ctx: TracePointContext) -> i32 {
+    // setuid(uid): uid @ 16
+    let target = unsafe { ctx.read_at::<u64>(16) }.unwrap_or(u32::MAX as u64) as u32;
+    setid_enter(target, 0);
+    0
+}
+
+#[tracepoint]
+pub fn handle_setreuid(ctx: TracePointContext) -> i32 {
+    // setreuid(ruid, euid): euid @ 24
+    let target = unsafe { ctx.read_at::<u64>(24) }.unwrap_or(u32::MAX as u64) as u32;
+    setid_enter(target, 1);
+    0
+}
+
+#[tracepoint]
+pub fn handle_setresuid(ctx: TracePointContext) -> i32 {
+    // setresuid(ruid, euid, suid): euid @ 24
+    let target = unsafe { ctx.read_at::<u64>(24) }.unwrap_or(u32::MAX as u64) as u32;
+    setid_enter(target, 2);
+    0
+}
+
+#[tracepoint]
+pub fn handle_exit_setuid(ctx: TracePointContext) -> i32 {
+    setid_exit(&ctx);
+    0
+}
+
+#[tracepoint]
+pub fn handle_exit_setreuid(ctx: TracePointContext) -> i32 {
+    setid_exit(&ctx);
+    0
+}
+
+#[tracepoint]
+pub fn handle_exit_setresuid(ctx: TracePointContext) -> i32 {
+    setid_exit(&ctx);
+    0
 }
 
 // required — eBPF programs must declare a panic handler
