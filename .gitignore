@@ -2,3 +2,5 @@ target
 
 docs/ARCHITECTURE_MIGRATION_PLAN.md
 docs/LIMITATIONS.md
+docs/KERNEL_ENFORCEMENT_PLAN.md
+docs/tracepoints_and_kprobes.md
