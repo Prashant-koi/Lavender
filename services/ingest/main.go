@@ -8,8 +8,11 @@ import (
 	"github.com/Prashant-koi/lavender/services/platform/env"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
+	nats "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
+
+const protoContentType = "application/x-protobuf"
 
 func main() {
 	natsURL := env.Default("NATS_URL", "nats://127.0.0.1:4222")
@@ -45,15 +48,24 @@ func main() {
 
 	// telemetry.raw.<tenant>.<agent_id> for self reference
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+		nowFn := func() int64 { return time.Now().UnixMilli() }
 
-		// call the function that decodes the raw and makes it in form
-		// of canonical event
-		// the subject here is the acceptedSubj return in the HandleTransportMessage fucntion defn
-		subject, payload, eventID, err := ingest.HandleTransportMessage(
-			msg.Subject(),
-			msg.Data(),
-			func() int64 { return time.Now().UnixMilli() },
+		// protobuf and JSON events share the raw stream during the migration;
+		// the content-type header tells them apart. exec is on proto, the rest
+		// on JSON until they're converted.
+		isProto := msg.Headers().Get("content-type") == protoContentType
+
+		var (
+			subject string
+			payload []byte
+			eventID string
+			err     error
 		)
+		if isProto {
+			subject, payload, eventID, err = ingest.HandleProtoMessage(msg.Subject(), msg.Data(), nowFn)
+		} else {
+			subject, payload, eventID, err = ingest.HandleTransportMessage(msg.Subject(), msg.Data(), nowFn)
+		}
 
 		if err != nil {
 			// bad payloads will never get better, terminate so jetstream
@@ -63,13 +75,28 @@ func main() {
 			return
 		}
 
-		// we will finally republish to the canonical stream, event_id doubles
-		// as the dedup msg id so a redelivered raw message can't produce two
-		// canonical events
-		if _, err := js.Publish(ctx, subject, payload, jetstream.WithMsgID(eventID)); err != nil {
-			log.Printf("republish failed of %s : %v", subject, err)
-			msg.Nak() // transient failure, let jetstream redeliver
-			return
+		// republish to the canonical stream, carrying the format header forward so
+		// downstream decodes correctly. event_id doubles as the dedup msg id.
+		if isProto {
+			out := &nats.Msg{
+				Subject: subject,
+				Data:    payload,
+				Header: nats.Header{
+					"content-type":  []string{protoContentType},
+					jetstream.MsgIDHeader: []string{eventID},
+				},
+			}
+			if _, err := js.PublishMsg(ctx, out); err != nil {
+				log.Printf("republish failed of %s : %v", subject, err)
+				msg.Nak()
+				return
+			}
+		} else {
+			if _, err := js.Publish(ctx, subject, payload, jetstream.WithMsgID(eventID)); err != nil {
+				log.Printf("republish failed of %s : %v", subject, err)
+				msg.Nak() // transient failure, let jetstream redeliver
+				return
+			}
 		}
 
 		msg.Ack()

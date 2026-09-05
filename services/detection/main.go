@@ -6,6 +6,7 @@ import (
 
 	"github.com/Prashant-koi/lavender/detection/internal/detection"
 	"github.com/Prashant-koi/lavender/services/platform/env"
+	"github.com/Prashant-koi/lavender/services/platform/events"
 	"github.com/Prashant-koi/lavender/services/platform/natsx"
 	"github.com/Prashant-koi/lavender/services/platform/shutdown"
 	"github.com/nats-io/nats.go/jetstream"
@@ -45,7 +46,13 @@ func main() {
 	detector := detection.NewDetector()
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		alerts, err := detector.HandleCanonicalMessage(msg.Subject(), msg.Data()) // get the alerts
+		var alerts []events.AlertEvent
+		var err error
+		if msg.Headers().Get("content-type") == "application/x-protobuf" {
+			alerts, err = detector.HandleCanonicalProto(msg.Subject(), msg.Data())
+		} else {
+			alerts, err = detector.HandleCanonicalMessage(msg.Subject(), msg.Data())
+		}
 		if err != nil {
 			// invalid canonical json
 			log.Printf("detection error: %v", err)
