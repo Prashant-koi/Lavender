@@ -59,6 +59,37 @@ impl Publisher {
         Ok(())
     }
 
+    // Same as publish_telemetry but tags the message content-type so ingest knows to
+    // decode it as protobuf. Used for event types migrated to the proto wire format;
+    // JSON events keep using publish_telemetry until they are converted.
+    pub async fn publish_telemetry_proto(
+        &self,
+        agent_id: &str,
+        event_id: &str,
+        payload: Vec<u8>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let subject = format!(
+            "{}.{}.{}",
+            self.telemetry_subject_prefix,
+            self.tenant_id,
+            agent_id
+        );
+
+        let ack_future = self
+            .jetstream
+            .send_publish(
+                subject,
+                jetstream::context::Publish::build()
+                    .message_id(event_id)
+                    .header("content-type", "application/x-protobuf")
+                    .payload(payload.into()),
+            )
+            .await?;
+
+        ack_future.await?;
+        Ok(())
+    }
+
     // Here the heartbeats use a separate subject family so control-plane can subscribe to host liveness
     // all heartbeats live under the heartbeat.*
     pub async fn publish_heartbeat(

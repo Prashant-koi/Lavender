@@ -14,3 +14,7 @@ toml         = "0.8"
 libc = "0.2"
 async-nats = "0.38"
 uuid = { version = "1", features = ["v4"] }
+prost = "0.13"
+
+[build-dependencies]
+prost-build = "0.13"

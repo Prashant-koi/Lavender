@@ -5,6 +5,8 @@ pub mod response;
 pub mod bootstrap;
 pub mod event_loop;
 pub mod transport;
+pub mod pb;
+pub mod proto;
 pub mod publisher;
 
 pub mod runtime;

@@ -82,9 +82,10 @@ pub async fn run(
                         &config,
                     );
 
-                    // Publish after exec handling so local runtime can still use its fallback
-                    // path, transport uses parent ppid from the eBPF agent now
-                    let transport_event = crate::transport::exec_to_transport_event(
+                    // Publish exec as protobuf (proto/lavender.proto). This is the first
+                    // event type on the new wire format; open/connect/exit still ride JSON
+                    // until they're converted. event_id doubles as the JetStream dedup id.
+                    let (event_id, payload) = crate::proto::exec_to_proto(
                         event,
                         &config.agent.agent_id,
                         &config.agent.tenant_id,
@@ -92,14 +93,11 @@ pub async fn run(
                         now_unix_ms(),
                     );
 
-                    //publish
-                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
-                        if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
-                            .await
-                        {
-                            eprintln!("failed to publish telemetry: {err}");
-                        }
+                    if let Err(err) = publisher
+                        .publish_telemetry_proto(&config.agent.agent_id, &event_id, payload)
+                        .await
+                    {
+                        eprintln!("failed to publish telemetry: {err}");
                     }
                 }
 

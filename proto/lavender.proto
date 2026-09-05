@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package lavender.v1;
+
+// Go types generate into services/platform/pb (pushed as part of the platform module).
+option go_package = "github.com/Prashant-koi/lavender/services/platform/pb;pb";
+
+// ── envelope ────────────────────────────────────────────────────────────────
+// TelemetryEvent is what the agent publishes on telemetry.raw.<tenant>.<agent_id>.
+// It replaces the hand-mirrored JSON AgentTelemetryEvent. The oneof carries the
+// per-kind body, so adding a new event type is a schema edit, not a cascade.
+message TelemetryEvent {
+  uint32 schema_version      = 1;
+  string event_id            = 2; // agent-generated uuid, also the JetStream dedup id
+  string agent_id            = 3;
+  optional string tenant_id  = 4;
+  Host   host                = 5;
+  uint64 observed_at_unix_ms = 6; // agent wall clock
+  uint64 ktime_ns            = 7; // monotonic kernel time, for ordering reconstruction
+
+  oneof event {
+    ExecEvent       exec        = 10;
+    OpenEvent       open        = 11;
+    ConnectEvent    connect     = 12;
+    ExitEvent       exit        = 13;
+    HeartbeatEvent  heartbeat   = 14;
+    PtraceEvent     ptrace      = 15;
+    ModuleLoadEvent module_load = 16;
+    BpfEvent        bpf         = 17;
+    MemfdEvent      memfd       = 18;
+    ExecveatEvent   execveat    = 19;
+    BindEvent       bind        = 20;
+    ListenEvent     listen      = 21;
+    SetidEvent      setid       = 22;
+  }
+}
+
+// CanonicalEvent is what ingest republishes on telemetry.accepted.<tenant>.<agent_id>
+// after validation: the raw envelope plus the server receive time.
+message CanonicalEvent {
+  TelemetryEvent raw          = 1;
+  int64 received_at_unix_ms   = 2;
+}
+
+message Host {
+  string hostname = 1;
+}
+
+// ── event bodies ────────────────────────────────────────────────────────────
+message ExecEvent {
+  uint32 pid          = 1;
+  uint32 ppid         = 2;
+  uint32 uid          = 3;
+  string comm         = 4;
+  string filename     = 5;
+  repeated string argv = 6; // full command line, split from the kernel cmdline buffer
+}
+
+message OpenEvent {
+  uint32 pid      = 1;
+  string comm     = 2;
+  string filename = 3;
+  int32  flags    = 4; // O_WRONLY/O_CREAT/... read vs write
+}
+
+message ConnectEvent {
+  uint32 pid       = 1;
+  uint32 uid       = 2;
+  string comm      = 3;
+  string dest_ip   = 4;
+  uint32 dest_port = 5; // proto3 has no u16; carry in a u32
+  uint32 af        = 6;
+}
+
+message ExitEvent {
+  uint32 pid = 1;
+}
+
+message HeartbeatEvent {
+  string status = 1;
+}
+
+message PtraceEvent {
+  uint32 pid        = 1;
+  uint32 uid        = 2;
+  string comm       = 3;
+  uint32 target_pid = 4;
+  int32  request    = 5;
+}
+
+message ModuleLoadEvent {
+  uint32 pid      = 1;
+  uint32 uid      = 2;
+  string comm     = 3;
+  bool   is_finit = 4;
+  string params   = 5;
+}
+
+message BpfEvent {
+  uint32 pid  = 1;
+  uint32 uid  = 2;
+  string comm = 3;
+  uint32 cmd  = 4;
+}
+
+message MemfdEvent {
+  uint32 pid   = 1;
+  uint32 uid   = 2;
+  string comm  = 3;
+  uint32 flags = 4;
+  string name  = 5;
+}
+
+message ExecveatEvent {
+  uint32 pid           = 1;
+  uint32 ppid          = 2;
+  uint32 uid           = 3;
+  string comm          = 4;
+  int32  dirfd         = 5;
+  int32  flags         = 6;
+  string filename      = 7;
+  repeated string argv = 8;
+}
+
+message BindEvent {
+  uint32 pid  = 1;
+  uint32 uid  = 2;
+  string comm = 3;
+  string addr = 4;
+  uint32 port = 5;
+  uint32 af   = 6;
+}
+
+message ListenEvent {
+  uint32 pid     = 1;
+  uint32 uid     = 2;
+  string comm    = 3;
+  int32  sockfd  = 4;
+  int32  backlog = 5;
+}
+
+message SetidEvent {
+  uint32 pid     = 1;
+  string comm    = 2;
+  uint32 old_uid = 3;
+  uint32 new_uid = 4;
+  uint32 call    = 5; // 0=setuid 1=setreuid 2=setresuid
+  bool   success = 6;
+}

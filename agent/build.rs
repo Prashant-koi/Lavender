@@ -4,6 +4,12 @@ use std::env;
 use std::fs;
 
 fn main() {
+    // compile the protobuf transport schema into OUT_DIR/lavender.v1.rs
+    // (included by agent/src/pb.rs). Uses the system protoc.
+    println!("cargo:rerun-if-changed=../proto/lavender.proto");
+    prost_build::compile_protos(&["../proto/lavender.proto"], &["../proto"])
+        .expect("failed to compile proto/lavender.proto");
+
     // we will tell cargo that if ebpf source changes, rerun this build script
     println!("cargo:rerun-if-changed=../lavender-ebpf/src/main.rs");
     println!("cargo:rerun-if-env-changed=LAVENDER_PREBUILT_EBPF_PATH");
