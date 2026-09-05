@@ -1,4 +1,4 @@
-use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent, SetidEvent};
+use common::{BindEvent, BpfEvent, ConnEvent, ExecEvent, ExecveatEvent, ExitEvent, ListenEvent, MemfdEvent, ModuleLoadEvent, OpenEvent, PtraceEvent, SetidEvent};
 
 use crate::bootstrap::AgentBootstrap;
 use crate::config::Config;
@@ -112,30 +112,28 @@ pub async fn run(
                 let rb = guard.get_inner_mut();
 
                 while let Some(item) = rb.next() {
-                    // we will read it as u32 directly
-                    let pid = unsafe { *(item.as_ptr() as *const u32)};
+                    // ExitEvent is { ktime_ns: u64, pid: u32 } — read the struct, not a bare
+                    // u32 (a bare read would grab the low half of ktime_ns, not the pid)
+                    let event = unsafe { &*(item.as_ptr() as *const ExitEvent) };
 
                     // Cleanup removes pid from process tree, correlator and scorer.
-                    exit_handler::handle_event(pid, &mut state);
+                    exit_handler::handle_event(event.pid, &mut state);
 
                     // Exits also go to the backend so detection workers can evict
                     // their own per-pid state instead of tracking dead pids forever
-                    let transport_event = crate::transport::exit_to_transport_event(
-                        pid,
+                    let (event_id, payload) = crate::proto::exit_to_proto(
+                        event,
                         &config.agent.agent_id,
                         &config.agent.tenant_id,
                         &hostname,
                         now_unix_ms(),
                     );
 
-                    //publish
-                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
-                        if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
-                            .await
-                        {
-                            eprintln!("failed to publish telemetry: {err}");
-                        }
+                    if let Err(err) = publisher
+                        .publish_telemetry_proto(&config.agent.agent_id, &event_id, payload)
+                        .await
+                    {
+                        eprintln!("failed to publish telemetry: {err}");
                     }
                 }
 
@@ -162,7 +160,7 @@ pub async fn run(
 
                     // Publish after open handling so local runtime can still use its fallback
                     // path, transport uses parent ppid from the eBPF agent now
-                    let transport_event = crate::transport::open_to_transport_event(
+                    let (event_id, payload) = crate::proto::open_to_proto(
                         event,
                         &config.agent.agent_id,
                         &config.agent.tenant_id,
@@ -170,14 +168,11 @@ pub async fn run(
                         now_unix_ms(),
                     );
 
-                    //publish
-                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
-                        if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
-                            .await
-                        {
-                            eprintln!("failed to publish telemetry: {err}");
-                        }
+                    if let Err(err) = publisher
+                        .publish_telemetry_proto(&config.agent.agent_id, &event_id, payload)
+                        .await
+                    {
+                        eprintln!("failed to publish telemetry: {err}");
                     }
                 }
 
@@ -205,7 +200,7 @@ pub async fn run(
 
                     // Publish after connect handling so local runtime can still use its fallback
                     // path, transport uses parent ppid from the eBPF agent now
-                    let transport_event = crate::transport::connect_to_transport_event(
+                    let (event_id, payload) = crate::proto::connect_to_proto(
                         event,
                         &config.agent.agent_id,
                         &config.agent.tenant_id,
@@ -213,14 +208,11 @@ pub async fn run(
                         now_unix_ms(),
                     );
 
-                    //publish
-                    if let Ok(payload) = serde_json::to_vec(&transport_event) {
-                        if let Err(err) = publisher
-                            .publish_telemetry(&config.agent.agent_id, &transport_event.event_id, payload)
-                            .await
-                        {
-                            eprintln!("failed to publish telemetry: {err}");
-                        }
+                    if let Err(err) = publisher
+                        .publish_telemetry_proto(&config.agent.agent_id, &event_id, payload)
+                        .await
+                    {
+                        eprintln!("failed to publish telemetry: {err}");
                     }
                 }
 
