@@ -62,6 +62,32 @@ func protoToCanonical(pe *pb.CanonicalEvent) (events.CanonicalEvent, bool) {
 			Argv:     e.Exec.Argv,
 		}
 		return ce, true
+	case *pb.TelemetryEvent_Open:
+		ce.Event = events.TransportEventKind{
+			Type:     "open",
+			PID:      e.Open.Pid,
+			Comm:     e.Open.Comm,
+			Filename: e.Open.Filename,
+		}
+		return ce, true
+	case *pb.TelemetryEvent_Connect:
+		ce.Event = events.TransportEventKind{
+			Type:     "connect",
+			PID:      e.Connect.Pid,
+			UID:      e.Connect.Uid,
+			Comm:     e.Connect.Comm,
+			DestIP:   e.Connect.DestIp,
+			DestPort: uint16(e.Connect.DestPort),
+			AF:       uint16(e.Connect.Af),
+		}
+		return ce, true
+	case *pb.TelemetryEvent_Exit:
+		// exit drives per-pid state eviction in the correlator
+		ce.Event = events.TransportEventKind{
+			Type: "exit",
+			PID:  e.Exit.Pid,
+		}
+		return ce, true
 	default:
 		return events.CanonicalEvent{}, false
 	}

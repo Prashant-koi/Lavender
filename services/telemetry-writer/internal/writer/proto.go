@@ -49,8 +49,23 @@ func HandleCanonicalProto(subject string, data []byte) (*CanonicalRow, error) {
 		row.Filename = e.Exec.Filename
 		row.Argv = strings.Join(e.Exec.Argv, " ")
 		return row, nil
+	case *pb.TelemetryEvent_Open:
+		row.EventType = "open"
+		row.PID = e.Open.Pid
+		row.Comm = e.Open.Comm
+		row.Filename = e.Open.Filename
+		return row, nil
+	case *pb.TelemetryEvent_Connect:
+		row.EventType = "connect"
+		row.PID = e.Connect.Pid
+		row.UID = e.Connect.Uid
+		row.Comm = e.Connect.Comm
+		row.DestIP = e.Connect.DestIp
+		row.DestPort = uint16(e.Connect.DestPort)
+		row.AF = uint16(e.Connect.Af)
+		return row, nil
 	default:
-		// open/connect and the new probe types aren't persisted via proto yet
+		// exit/heartbeat and the new probe types aren't persisted yet
 		return nil, nil
 	}
 }
