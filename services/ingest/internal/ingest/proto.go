@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// HandleProtoMessage is the protobuf twin of HandleTransportMessage. It decodes a
+// HandleProtoMessage decodes a
 // pb.TelemetryEvent, validates it, stamps the server receive time, and returns the
 // accepted subject plus a marshalled pb.CanonicalEvent. event_id doubles as the
 // JetStream dedup id on republish.

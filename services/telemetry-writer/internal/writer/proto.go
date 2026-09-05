@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// HandleCanonicalProto is the protobuf twin of HandleCanonicalMessage: it decodes a
+// HandleCanonicalProto decodes a
 // pb.CanonicalEvent into the format-agnostic CanonicalRow the store already inserts.
 // Only exec is on the proto path today; other kinds return (nil, nil) = skip.
 func HandleCanonicalProto(subject string, data []byte) (*CanonicalRow, error) {

@@ -49,13 +49,7 @@ func main() {
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		var row *writer.CanonicalRow
-		var err error
-		if msg.Headers().Get("content-type") == "application/x-protobuf" {
-			row, err = writer.HandleCanonicalProto(msg.Subject(), msg.Data())
-		} else {
-			row, err = writer.HandleCanonicalMessage(msg.Subject(), msg.Data())
-		}
+		row, err := writer.HandleCanonicalProto(msg.Subject(), msg.Data())
 		if err != nil {
 			log.Printf("writer error: %v", err)
 			msg.Term()
