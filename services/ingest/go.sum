@@ -1,5 +1,7 @@
-github.com/Prashant-koi/lavender/services/platform v0.0.0-20260612003026-78ffd437d2f9 h1:+V2panBGXvf1x2b6pEJVFAI+5/uq6tbIaKKoR0aFd5U=
-github.com/Prashant-koi/lavender/services/platform v0.0.0-20260612003026-78ffd437d2f9/go.mod h1:bJTxOKpp9zXHoKD/L3SEijQagjiIZ+fs1hcG0C0j6pM=
+github.com/Prashant-koi/lavender/services/platform v0.0.0-20260905192807-2915a6664047 h1:UykcWyizTYhHzYWBBnfB+zIqak2czXLppQDkab+J2pQ=
+github.com/Prashant-koi/lavender/services/platform v0.0.0-20260905192807-2915a6664047/go.mod h1:n9a8X1PoJR6tJpmPb72tGfxhatE9YzdCIVt2rUiLBgw=
+github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
 github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/nats-io/nats.go v1.52.0 h1:n3avV4VBsCgsdwh71TppsTwtv+QdPs7ntSKM8qJLGsc=
@@ -12,3 +14,5 @@ golang.org/x/crypto v0.49.0 h1:+Ng2ULVvLHnJ/ZFEq4KdcDd/cfjrrjjNSXNzxg0Y4U4=
 golang.org/x/crypto v0.49.0/go.mod h1:ErX4dUh2UM+CFYiXZRTcMpEcN8b/1gxEuv3nODoYtCA=
 golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
 golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+google.golang.org/protobuf v1.36.12 h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=
+google.golang.org/protobuf v1.36.12/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
